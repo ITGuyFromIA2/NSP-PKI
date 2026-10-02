@@ -66,14 +66,14 @@ $resp = Get-CAResponseObject -CAAnswers $ans -CACommonName 'Contoso-Issuing-CA' 
     -CASanitizedName 'Contoso-Issuing-CA' -CACertPem "-----BEGIN CERTIFICATE-----`nAAAA`n-----END CERTIFICATE-----" `
     -FgCert $fg -PeerSubjectFilter 'OU=VPN Users' -CAManagerVersion '2026-09-09'
 
-Assert-Equal -Actual $resp.Schema -Expected 4 -Because "hand-back schema version (Schema 2 adds FortiGatePfxBase64; Schema 3 adds CACertChain; 2026-09-30 Schema 4 drops the rendered CLI)"
+Assert-Equal -Actual $resp.Schema -Expected 5 -Because "hand-back schema version (Schema 2 adds FortiGatePfxBase64; Schema 3 adds CACertChain; Schema 4 drops the rendered CLI; Schema 5 drops the PFX password)"
 Assert-False -Condition ([bool]$resp.Contains('FortiGateCertSetupText')) -Because "Schema 4 carries data only - no rendered CLI (CLIBuilder renders it from these fields)"
 Assert-Equal -Actual $resp.CACertNameOnGate -Expected 'CA_Contoso-Issuing-CA' -Because "CA cert name on the gate = CA_<sanitized>"
 Assert-Equal -Actual $resp.FortiGateCertName -Expected 'Contoso-FGT' -Because "FortiGate cert name comes from Cert_CertificateName"
 Assert-Equal -Actual $resp.FortiGatePeerName -Expected 'Contoso-peer' -Because "peer name comes from Cert_PeerName"
 Assert-Equal -Actual $resp.PeerSubjectFilter -Expected 'OU=VPN Users' -Because "the passed filter is carried through"
 Assert-Equal -Actual $resp.FortiGatePfxFile -Expected 'ContosoLtd_FortiGate.pfx' -Because "only the PFX basename goes in the JSON"
-Assert-Equal -Actual $resp.FortiGatePfxPassword -Expected 'p@ss' -Because "the PFX password rides in the hand-back (tech copies it into the client folder)"
+Assert-False -Condition ([bool]$resp.Contains('FortiGatePfxPassword')) -Because "Schema 5: the PFX password is never in the hand-back (review FI-3 - file + password = the private key)"
 Assert-Equal -Actual $resp.AppProxyCrlUrl -Expected 'http://crl-contoso.msappproxy.net/CertEnroll/Contoso-Issuing-CA.crl' -Because "CRL URL composed from CA_AppProxyCrlFqdn"
 Assert-Equal -Actual $resp.AppProxyOcspUrl -Expected 'http://ocsp-contoso.msappproxy.net/ocsp' -Because "OCSP URL composed from CA_AppProxyOcspFqdn"
 Assert-Equal -Actual ($resp.TemplatesPublished -join ',') -Expected 'IKEv2VPN-CorpLAN,IKEv2VPN-CorpLAN-MANUAL,FortiGate' -Because "the three user/device templates are listed"
@@ -129,7 +129,8 @@ $srcMenu = (Get-Command Invoke-CAMenuHandoff).Definition
 foreach ($needle in 'Write-CAHeader', 'New-CAFortiGateIdentityCert', 'New-CAFortiGateCertFromCsr', 'Get-CAOcspCACertBytes', 'ConvertTo-CAPem', 'Get-CAResponseObject', 'Write-CAHandoffFiles', 'Get-CAAnswerOrPrompt') {
     Assert-Match -Actual $srcMenu -Pattern ([regex]::Escape($needle)) -Because "Invoke-CAMenuHandoff calls $needle"
 }
-Assert-Match -Actual $srcMenu -Pattern 'Path \(blank = generate a PFX\)' -Because "menu 13 takes a CSR / an issued cert / blank for the FortiGate identity"
+Assert-Match -Actual $srcMenu -Pattern 'Choose C, I or G \[C\]' -Because "menu 13 offers CSR (default) / issued cert / generate-a-PFX for the FortiGate identity (0.1.3: CSR first)"
+Assert-Match -Actual $srcMenu -Pattern 'Read-CAHandoffInputFile' -Because "the CSR / cert comes through the file picker (elevated consoles block drag-and-drop)"
 Assert-Match -Actual $srcMenu -Pattern 'Import-CAFortiGateIssuedCert' -Because "an already-issued .cer/.pem is wrapped into the hand-off as-is"
 Assert-Match -Actual $srcMenu -Pattern '\[Convert\]::ToBase64String\(\[System\.IO\.File\]::ReadAllBytes\(\$fg\.PfxPath\)\)' -Because "reads the generated PFX's own bytes and base64-encodes them for the single-file hand-back"
 Assert-Match -Actual $srcMenu -Pattern '-FortiGatePfxBase64 \$fgPfxBase64' -Because "and threads that through to Get-CAResponseObject"
@@ -398,6 +399,7 @@ try {
     function Resolve-VPNCertTemplateName { param($Name) $Name }
     function New-CAFortiGateIdentityCert { param($CAAnswers, $OutputDir, $CASanitizedName, $FortiGateFqdn) $script:__newIdentityCalls++; [pscustomobject]@{ PfxPath = $null; Password = 'new'; Thumbprint = 'NEW'; SerialNumber = '02'; Status = 'Issued' } }
     $script:__rhQ3 = [System.Collections.Generic.Queue[string]]::new()
+    function Set-Clipboard { param($Value) $script:__clip = $Value }
     function Read-Host { param([string]$Prompt) if ($script:__rhQ3.Count -eq 0) { throw "Read-Host queue empty (prompt: '$Prompt')" } $script:__rhQ3.Dequeue() }
     $wasDry = Get-CADryRun
     Set-CADryRun -Enabled $false
@@ -409,22 +411,24 @@ try {
         Assert-Equal -Actual $script:__newIdentityCalls -Expected 0 -Because "reusing the last FortiGate cert requests nothing new"
         Assert-Equal -Actual $script:__rhQ3.Count -Expected 0 -Because "only the output folder and the reuse choice are asked (names + filter come from the answers)"
         $newResp = Get-Content (Join-Path $reuseDir 'ContosoLtd_CAResponse.json') -Raw | ConvertFrom-Json
-        Assert-Equal -Actual $newResp.Schema -Expected 4 -Because "the rebuilt hand-back is Schema 4"
+        Assert-Equal -Actual $newResp.Schema -Expected 5 -Because "the rebuilt hand-back is Schema 5"
         Assert-Equal -Actual $newResp.FortiGatePfxBase64 -Expected $pfxB64 -Because "the same PFX rides in the rebuilt hand-back"
-        Assert-Equal -Actual $newResp.FortiGatePfxPassword -Expected 'pw-123' -Because "...with its original password"
+        Assert-False -Condition ([bool]$newResp.PSObject.Properties['FortiGatePfxPassword']) -Because "...without its password (Schema 5)"
+        Assert-Equal -Actual $script:__clip -Expected 'pw-123' -Because "the original password is shown again and put on the clipboard"
+        Assert-Equal -Actual (Get-CAPfxPassword -CompanyStem 'ContosoLtd' -OutputDir $reuseDir) -Expected 'pw-123' -Because "...and kept DPAPI-protected on the CA server for the next re-run"
         Assert-Equal -Actual $newResp.FortiGateCertThumbprint -Expected $fgCert.Thumbprint -Because "...and thumbprint"
         Assert-Match -Actual $newResp.CACertPem -Pattern 'BEGIN CERTIFICATE' -Because "everything else is rebuilt from the CA (its cert is refreshed)"
         Assert-False -Condition ([bool]$newResp.PSObject.Properties['FortiGateCertSetupText']) -Because "no rendered CLI in the rebuilt hand-back"
         Assert-False -Condition (Test-Path (Join-Path $reuseDir 'ContosoLtd_FortiGate_CertSetup.txt')) -Because "the old CLI file is removed from the output folder"
 
-        # N at the reuse prompt: output folder, N, blank path (generate), blank FQDN, Press Enter.
-        foreach ($a in @($reuseDir, 'N', '', '', '')) { $script:__rhQ3.Enqueue($a) }
+        # N at the reuse prompt: output folder, N, G (generate here), blank FQDN, Press Enter.
+        foreach ($a in @($reuseDir, 'N', 'G', '', '')) { $script:__rhQ3.Enqueue($a) }
         Invoke-CAMenuHandoff -CAAnswers $reuseAnswers -Status ([pscustomobject]@{ CACommonName = 'Contoso-Issuing-CA'; IssuanceReady = $true }) -CAManagerVersion '1.1.0' *> $null
         Assert-Equal -Actual $script:__newIdentityCalls -Expected 1 -Because "N makes a new FortiGate cert (the FQDN is asked only on this path)"
-        Assert-Equal -Actual $script:__rhQ3.Count -Expected 0 -Because "the new-cert path asks path + FQDN on top"
+        Assert-Equal -Actual $script:__rhQ3.Count -Expected 0 -Because "the new-cert path asks the C/I/G choice + FQDN on top"
     } finally {
         Set-CADryRun -Enabled $wasDry
-        Remove-Item function:Write-CAHeader, function:Get-CAActiveConfigName, function:Get-CAOcspCACertBytes, function:Test-CAHandoffCertRevoked, function:Resolve-VPNCertTemplateName, function:New-CAFortiGateIdentityCert, function:Read-Host -ErrorAction SilentlyContinue
+        Remove-Item function:Write-CAHeader, function:Get-CAActiveConfigName, function:Get-CAOcspCACertBytes, function:Test-CAHandoffCertRevoked, function:Resolve-VPNCertTemplateName, function:New-CAFortiGateIdentityCert, function:Read-Host, function:Set-Clipboard -ErrorAction SilentlyContinue
     }
 } finally {
     Remove-Item -Path $reuseDir -Recurse -Force -ErrorAction SilentlyContinue

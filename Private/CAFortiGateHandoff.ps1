@@ -53,7 +53,13 @@ foreach ($candidate in @(
 # Schema 4 (2026-09-30, per the maintainer - CLI generation moved to CLIBuilder): FortiGateCertSetupText is
 # gone and no _FortiGate_CertSetup.txt is written. The Orchestrator accepts a Schema 4 hand-back as
 # complete with just the JSON (+ PFX), and still ingests Schema 1-3 files.
-$script:CAHandoffResponseSchema = 4
+#
+# Schema 5 (NSP.PKI 0.1.3, 2026-10-02 - security review FI-3): FortiGatePfxPassword is no longer
+# in the hand-back. With the PFX and its password in one file, whoever had the file had the
+# FortiGate's private key. PKI Manager shows the password once (and copies it to the clipboard) and
+# keeps a DPAPI-protected copy on the CA server for a menu-13 re-run (Save-CAPfxPassword). The
+# Orchestrator reads Schema 1-4 files (password inside) and Schema 5 (password delivered separately).
+$script:CAHandoffResponseSchema = 5
 
 # ---------------------------------------------------------------------------
 function ConvertTo-CAPem {
@@ -217,8 +223,8 @@ function Get-CAResponseObject {
         FortiGateCertName        = $fgCertName
         FortiGatePeerName        = $peerName
         FortiGatePfxFile         = if ($FgCert -and $FgCert.PfxPath) { Split-Path $FgCert.PfxPath -Leaf } else { $null }
-        FortiGatePfxPassword     = if ($FgCert) { $FgCert.Password } else { $null }
-        FortiGatePfxBase64       = if (-not [string]::IsNullOrWhiteSpace($FortiGatePfxBase64)) { $FortiGatePfxBase64 } else { $null }
+        # Schema 5: no FortiGatePfxPassword - see the schema note at the top of this file.
+        FortiGatePfxBase64       =if (-not [string]::IsNullOrWhiteSpace($FortiGatePfxBase64)) { $FortiGatePfxBase64 } else { $null }
         FortiGateCertPem         = if ($FgCert -and $FgCert.PSObject.Properties['CertPem']) { $FgCert.CertPem } else { $null }
         FortiGateCertThumbprint  = if ($FgCert) { $FgCert.Thumbprint } else { $null }
         PeerSubjectFilter        = if ([string]::IsNullOrWhiteSpace($PeerSubjectFilter)) { '' } else { $PeerSubjectFilter.Trim() }
@@ -331,6 +337,58 @@ function Get-CAFortiGatePeerPlan {
 }
 
 # ---------------------------------------------------------------------------
+function Read-CAHandoffInputFile {
+    # A CSR / issued cert for menu 13: NSP.Console's file picker (Enter) or a typed/pasted path. Windows
+    # blocks drag-and-drop onto this elevated console, hence the picker. $null = cancelled.
+    param([Parameter(Mandatory)][string]$Prompt, [string]$Filter = 'All files (*.*)|*.*')
+    if (Get-Command Read-NSPFilePath -ErrorAction SilentlyContinue) {
+        $downloads = Join-Path ([Environment]::GetFolderPath('UserProfile')) 'Downloads'
+        $path = Read-NSPFilePath -Prompt $Prompt -Filter $Filter -InitialDirectory $downloads -AllowBack
+        if (Test-NSPBackSignal $path) { return $null }
+        return $path
+    }
+    while ($true) {
+        $path = ([string](Read-CAOptional -Prompt "$Prompt - full path (blank = cancel)")).Trim('"', "'", ' ')
+        if (-not $path) { return $null }
+        if (Test-Path -LiteralPath $path -PathType Leaf) { return $path }
+        Write-Host "  File not found: $path" -ForegroundColor Yellow
+    }
+}
+
+function Get-CAPfxPasswordPath {
+    # Where the CA server keeps its copy of a generated FortiGate PFX's password (Schema 5): the PKI
+    # work folder's Answers\ (Administrators and SYSTEM only), else next to the PFX when NSP.Toolkit
+    # isn't loaded. The file is DPAPI-protected for the Windows account that generated the PFX.
+    param([Parameter(Mandatory)][string]$CompanyStem, [string]$OutputDir)
+    $dir = if (Get-Command Get-NSPToolWorkPath -ErrorAction SilentlyContinue) { Get-NSPToolWorkPath -Tool PKI -Kind Answers -Create } else { $OutputDir }
+    if (-not $dir) { return $null }
+    return (Join-Path $dir "${CompanyStem}_FortiGate.pfx.password")
+}
+
+function Save-CAPfxPassword {
+    # DPAPI (current user) copy of the PFX password for a menu-13 re-run - never in the hand-back.
+    param([Parameter(Mandatory)][string]$CompanyStem, [Parameter(Mandatory)][string]$Password, [string]$OutputDir)
+    try {
+        $path = Get-CAPfxPasswordPath -CompanyStem $CompanyStem -OutputDir $OutputDir
+        if (-not $path) { return }
+        $protected = ConvertTo-SecureString -String $Password -AsPlainText -Force | ConvertFrom-SecureString
+        [System.IO.File]::WriteAllText($path, $protected)
+    } catch {
+        Write-Host "  WARNING: could not keep a protected copy of the PFX password ($($_.Exception.Message)) - note it now; a re-run will ask for it." -ForegroundColor Yellow
+    }
+}
+
+function Get-CAPfxPassword {
+    # The DPAPI copy Save-CAPfxPassword kept, or $null (none, or another Windows account made it).
+    param([Parameter(Mandatory)][string]$CompanyStem, [string]$OutputDir)
+    try {
+        $path = Get-CAPfxPasswordPath -CompanyStem $CompanyStem -OutputDir $OutputDir
+        if (-not $path -or -not (Test-Path -LiteralPath $path)) { return $null }
+        $secure = [System.IO.File]::ReadAllText($path).Trim() | ConvertTo-SecureString -ErrorAction Stop
+        return [System.Net.NetworkCredential]::new('', $secure).Password
+    } catch { return $null }
+}
+
 function Get-CAHandoffIdentity {
     <#
     .SYNOPSIS
@@ -379,8 +437,15 @@ function Get-CAHandoffIdentity {
             [byte[]]$bytes = if (Test-Path $pfxPath) { [System.IO.File]::ReadAllBytes($pfxPath) } elseif ($old.FortiGatePfxBase64) { [Convert]::FromBase64String($old.FortiGatePfxBase64) } else { $null }
             if (-not $bytes) { return $null }
             if (-not (Test-Path $pfxPath)) { [System.IO.File]::WriteAllBytes($pfxPath, $bytes) }
-            $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($bytes, [string]$old.FortiGatePfxPassword)
-            $out.Kind = 'PFX'; $out.PfxPath = $pfxPath; $out.Password = $old.FortiGatePfxPassword; $out.PfxBase64 = [Convert]::ToBase64String($bytes)
+            # Schema 1-4 hand-backs carry the password; Schema 5 doesn't - use the CA server's protected
+            # copy, else ask (the tech was shown it when the PFX was generated).
+            $password = if ($old.PSObject.Properties['FortiGatePfxPassword'] -and $old.FortiGatePfxPassword) { [string]$old.FortiGatePfxPassword } else { Get-CAPfxPassword -CompanyStem $CompanyStem -OutputDir $OutputDir }
+            if (-not $password) {
+                $password = ([string](Read-Host "  Password for the FortiGate PFX in the last hand-back (shown when it was generated; blank = make a new cert)")).Trim()
+                if (-not $password) { return $null }
+            }
+            $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($bytes, $password)
+            $out.Kind = 'PFX'; $out.PfxPath = $pfxPath; $out.Password = $password; $out.PfxBase64 = [Convert]::ToBase64String($bytes)
         } elseif ($old.FortiGateCertPem) {
             $b64 = ("$($old.FortiGateCertPem)" -replace '-----(BEGIN|END) CERTIFICATE-----', '') -replace '\s', ''
             $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new([Convert]::FromBase64String($b64))
@@ -687,8 +752,8 @@ function Write-CAHandoffFiles {
     $jsonPath = Join-Path $OutputDir "${companyStem}_CAResponse.json"
     $staleTxt = Join-Path $OutputDir "${companyStem}_FortiGate_CertSetup.txt"
 
-    # NSP.PKI: written as a PKI Response hand-off (NSP.Toolkit shared header around the same Schema 4
-    # payload, PFX and its password still embedded) - <Company>_PKI_Response.json, for the
+    # NSP.PKI: written as a PKI Response hand-off (NSP.Toolkit shared header around the Schema 5
+    # payload - PFX embedded, its password NOT) - <Company>_PKI_Response.json, for the
     # Orchestrator's Staging\<Abbrev>\Inbox\. The zip-era <stem>_CAResponse.json is only written when
     # NSP.Toolkit is unavailable.
     if (Get-Command New-NSPHandoff -ErrorAction SilentlyContinue) {
@@ -866,32 +931,42 @@ function Invoke-CAMenuHandoff {
 
     if (-not $fg) {
         Write-Host ""
-        Write-Host "  FortiGate identity cert - give ONE of:" -ForegroundColor Cyan
-        Write-Host "    - a CSR generated on the FortiGate (.csr / .req)  -> submitted here, key stays on" -ForegroundColor Gray
-        Write-Host "      the gate; required for a machine-type / admin-only template." -ForegroundColor Gray
-        Write-Host "      FortiGate:  config vpn certificate local / edit <name> / (generate) -> download the .csr" -ForegroundColor DarkGray
-        Write-Host "    - an already-issued cert (.cer / .crt / .pem)     -> wrapped into the hand-back as-is" -ForegroundColor Gray
-        Write-Host "    - blank                                           -> CA-Manager generates a keypair + PFX" -ForegroundColor Gray
-        $inPath = ([string](Read-CAOptional -Prompt "  Path (blank = generate a PFX)")).Trim('"', ' ')
+        # NSP.PKI 0.1.3 (security review FI-3): the CSR is the default - the private key never leaves
+        # the FortiGate. A PFX generated here still works, but its key has to be carried to the gate.
+        $gateCertName = if ($CAAnswers.Cert_CertificateName) { "$($CAAnswers.Cert_CertificateName)" } else { "$sanitized-FGT" }
+        Write-Host "  FortiGate identity certificate:" -ForegroundColor Cyan
+        Write-Host "    [C] A CSR generated ON the FortiGate (recommended - the private key never leaves the gate;" -ForegroundColor White
+        Write-Host "        required for a machine-type / admin-only template)" -ForegroundColor White
+        Write-Host "        FortiGate GUI: System > Certificates > Create/Import > Generate CSR, name it" -ForegroundColor DarkGray
+        Write-Host "        '$gateCertName' (subject CN=$gateCertName), then Download the .csr." -ForegroundColor DarkGray
+        Write-Host "    [I] An already-issued certificate (.cer / .crt / .pem) - wrapped into the hand-back as-is" -ForegroundColor Gray
+        Write-Host "    [G] Generate a keypair + PFX here - its password is shown once, never written to the hand-back" -ForegroundColor Gray
+        $mode = ([string](Read-Host "  Choose C, I or G [C]")).Trim().ToUpperInvariant()
+        if (-not $mode) { $mode = 'C' }
+        if ($mode -notin 'C', 'I', 'G') { Write-Host "  Not a choice: $mode" -ForegroundColor Red; Read-Host "`nPress Enter to return to the menu" | Out-Null; return }
 
-        if ([string]::IsNullOrWhiteSpace($inPath)) {
+        if ($mode -eq 'G') {
             # The SAN FQDN only matters for a cert generated here, so it's only asked on this path.
             $fgFqdn = Read-CAOptional -Prompt "  FortiGate FQDN for the cert SAN (optional, e.g. vpn.$companyStem.com)"
             $fg = New-CAFortiGateIdentityCert -CAAnswers $CAAnswers -OutputDir $outDir -CASanitizedName $sanitized -FortiGateFqdn $fgFqdn
-        } elseif (Test-Path $inPath) {
+        } else {
+            $what = if ($mode -eq 'C') { 'The FortiGate CSR' } else { 'The issued FortiGate certificate' }
+            $filter = if ($mode -eq 'C') { 'Certificate requests (*.csr;*.req;*.pem;*.txt)|*.csr;*.req;*.pem;*.txt|All files (*.*)|*.*' } else { 'Certificates (*.cer;*.crt;*.pem)|*.cer;*.crt;*.pem|All files (*.*)|*.*' }
+            $inPath = Read-CAHandoffInputFile -Prompt "  $what" -Filter $filter
+            if (-not $inPath) { Write-Host "  Cancelled." -ForegroundColor Gray; Read-Host "`nPress Enter to return to the menu" | Out-Null; return }
             # CSR markers win; otherwise anything that parses as a cert (DER or PEM) is an issued cert.
             if (-not (Test-CAIsCsr -Path $inPath) -and (Read-CAX509 -Path $inPath)) {
                 $fg = Import-CAFortiGateIssuedCert -CertPath $inPath -OutputDir $outDir -FileStem "${companyStem}_FortiGate"
-            } else {
+            } elseif (Test-CAIsCsr -Path $inPath) {
                 $caFqdnLocal = try { [System.Net.Dns]::GetHostEntry($env:COMPUTERNAME).HostName } catch { $env:COMPUTERNAME }
                 $caConfigDefault = "$caFqdnLocal\$($Status.CACommonName)"
                 $caConfigForCsr = Read-Host "  CA config to submit to (`"<server-fqdn>\<CA name>`") [$caConfigDefault]"
                 if ([string]::IsNullOrWhiteSpace($caConfigForCsr)) { $caConfigForCsr = $caConfigDefault }
                 $fg = New-CAFortiGateCertFromCsr -CsrPath $inPath -Template $fgTemplate -OutputDir $outDir -FileStem "${companyStem}_FortiGate" -CAConfig $caConfigForCsr
+            } else {
+                Write-Host "  $inPath is neither a certificate request nor a certificate." -ForegroundColor Red
+                Read-Host "`nPress Enter to return to the menu" | Out-Null; return
             }
-        } else {
-            Write-Host "  Path not found: $inPath" -ForegroundColor Red
-            Read-Host "`nPress Enter to return to the menu" | Out-Null; return
         }
 
         # Embed the PFX bytes (base64) in the JSON when one was generated, so the JSON alone travels.
@@ -937,8 +1012,19 @@ function Invoke-CAMenuHandoff {
     Write-Host ""
     Write-Host "  Hand-back:" -ForegroundColor Green
     Write-Host "    $($written.JsonPath)   <- copy this ONE file back (the PFX, if any, is embedded in it)" -ForegroundColor Green
-    if ($fg -and $fg.PfxPath) { Write-Host "    $($fg.PfxPath)   (same PFX, loose copy; its password is in the JSON)" -ForegroundColor Gray }
+    if ($fg -and $fg.PfxPath) { Write-Host "    $($fg.PfxPath)   (same PFX, loose copy)" -ForegroundColor Gray }
     elseif ($fg -and $fg.PSObject.Properties['CertPath'] -and $fg.CertPath) { Write-Host "    $($fg.CertPath)   (signed cert; the gate keeps its own key)" -ForegroundColor Gray }
+    # Schema 5: the PFX password is NOT in the hand-back. Show it once, put it on the clipboard, and
+    # keep a DPAPI copy on this server so a re-run can reuse the PFX.
+    if ($fg -and $fg.PfxPath -and $fg.Password) {
+        Save-CAPfxPassword -CompanyStem $companyStem -Password "$($fg.Password)" -OutputDir $outDir
+        $onClipboard = $false
+        try { Set-Clipboard -Value "$($fg.Password)" -ErrorAction Stop; $onClipboard = $true } catch { Write-Verbose "Clipboard unavailable: $($_.Exception.Message)" }
+        Write-Host ""
+        Write-Host "  FortiGate PFX password:  $($fg.Password)$(if ($onClipboard) { '   (also on the clipboard)' })" -ForegroundColor Yellow
+        Write-Host "  It is NOT in the hand-back file. Send it separately (or enter it yourself when importing the" -ForegroundColor Yellow
+        Write-Host "  PFX on the FortiGate). This server keeps a protected copy for a menu-13 re-run." -ForegroundColor Yellow
+    }
     Write-Host ""
     Write-Host "  Next: copy the JSON into the client's Staging\<Abbrev>\Inbox\ folder on the build box, then re-run" -ForegroundColor Cyan   # NSP.PKI: Inbox
     Write-Host "  IPSec-MasterOrchestrator.ps1 Step 5. CLIBuilder renders the FortiGate CA/peer CLI from it." -ForegroundColor Cyan

@@ -3,6 +3,18 @@
 All notable changes to NSP.PKI are documented here. Versions follow
 [SemVer](https://semver.org/). `0.x` until it has real use outside NSP.
 
+## 0.1.3
+
+- **The FortiGate PFX password is no longer in the hand-back (response Schema 5).** With the PFX and
+  its password in one file, whoever had the file had the FortiGate's private key. Menu 13 shows the
+  password once, copies it to the clipboard, and keeps a DPAPI-protected copy on the CA server for a
+  re-run (asked for when another account re-runs). Schema 1-4 hand-backs are still read.
+- **The CSR is the default** for the FortiGate identity certificate: menu 13 asks C (CSR from the
+  FortiGate, recommended), I (an issued cert) or G (generate a PFX here), shows where to make the CSR
+  on the FortiGate, and picks the file with a file dialog (NSP.Console 0.1.3 `Read-NSPFilePath`) or
+  a pasted path - Windows blocks drag-and-drop onto the elevated console.
+- Needs NSP.Console 0.1.3.
+
 ## 0.1.2
 
 - The hand-back folder now opens in Explorer for real. Explorer runs as the desktop user without

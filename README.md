@@ -28,11 +28,26 @@ New-NSPPkiShim -ClientAnswers .\EXAMPLE.json -Path C:\Temp\PKI-Manager.ps1   # a
 - Answers live in `%ProgramData%\NSP\Toolkit\PKI\Answers\Answers.json` (Administrators and SYSTEM
   only), not `CAAnswers.json` next to the script. A `-CAConfigName` is saved there too
   (`PKICAConfigName`) - the zip-era launcher's `$CAServerName`.
-- Menu 13 writes `<Company>_PKI_Response.json`, an NSP.Toolkit hand-off (shared header around the
-  same Schema 4 payload; the FortiGate PFX and its password are still embedded), into the work
-  folder's `Responses\` by default. Copy it to the Orchestrator's `Staging\<Abbrev>\Inbox\`.
-  Re-running menu 13 still offers to reuse the FortiGate certificate from the last hand-back - from
-  the new file or a zip-era `<stem>_CAResponse.json`.
+- Menu 13 writes `<Company>_PKI_Response.json`, an NSP.Toolkit hand-off (shared header around a
+  Schema 5 payload), into the work folder's `Responses\` by default and opens that folder in
+  Explorer. Copy it to the Orchestrator's `Staging\<Abbrev>\Inbox\`. Re-running menu 13 still offers
+  to reuse the FortiGate certificate from the last hand-back - from the new file or a zip-era
+  `<stem>_CAResponse.json`.
+
+## The FortiGate identity certificate
+
+Menu 13 asks how the FortiGate gets its certificate:
+
+- **C - a CSR generated on the FortiGate (the default, and the recommended way).** The private key
+  never leaves the gate. On the FortiGate: System > Certificates > Create/Import > Generate CSR, then
+  Download the `.csr`. Press Enter at the prompt to pick it with a file dialog, or paste its path
+  (Windows blocks dragging a file onto this elevated window).
+- **I - an already-issued certificate** (`.cer` / `.crt` / `.pem`), wrapped into the hand-back as-is.
+- **G - generate a keypair and PFX here.** The PFX is embedded in the hand-back, but **its password
+  is not** (Schema 5): PKI Manager shows it once and copies it to the clipboard - send it separately,
+  or enter it yourself when importing on the FortiGate. The CA server keeps a copy, protected with
+  Windows DPAPI for the account that generated it, so a re-run can reuse the PFX; another account
+  is asked for the password. Schema 4 and older hand-backs (password inside) are still read.
 - **R** relaunches the module in a new elevated window; **U** installs a newer NSP.PKI from the
   PowerShell Gallery and relaunches (the zip-era U re-ran the shim to fetch a newer zip).
 - The first start on a server offers to move the zip-era tool's files (`CAStaging\`, old launchers

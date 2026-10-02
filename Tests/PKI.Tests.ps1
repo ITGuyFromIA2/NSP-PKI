@@ -142,6 +142,45 @@ Describe 'NSP.PKI' {
             $id.Password | Should -Be 'not-a-real-password'
             Test-Path -LiteralPath $id.PfxPath | Should -BeTrue
         }
+        It 'Schema 5: never puts the PFX password in the hand-back' {
+            $r = InModuleScope NSP.PKI -Parameters @{ P = $Pfx } {
+                param($P)
+                Get-CAResponseObject -CAAnswers ([pscustomobject]@{ Company_Name = 'Example-Co' }) -CACommonName 'EXAMPLE-ISSUING-CA' -CASanitizedName 'EXAMPLE-ISSUING-CA' `
+                    -FgCert ([pscustomobject]@{ PfxPath = 'C:\x\ExampleCo_FortiGate.pfx'; Password = 'not-a-real-password'; Thumbprint = $P.Thumbprint }) -FortiGatePfxBase64 ([Convert]::ToBase64String($P.Bytes))
+            }
+            $r.Schema | Should -Be 5
+            $r.Contains('FortiGatePfxPassword') | Should -BeFalse
+            ($r | ConvertTo-Json -Depth 6) | Should -Not -Match 'not-a-real-password'
+        }
+        It 'Schema 5: reuses the PFX with the password the CA server kept (DPAPI), not one from the file' {
+            $out = Join-Path $TestDrive ('s5_' + [guid]::NewGuid().ToString('N'))
+            $r5 = $Response.PSObject.Copy(); $r5.Schema = 5; $r5.PSObject.Properties.Remove('FortiGatePfxPassword')
+            $null = InModuleScope NSP.PKI -Parameters @{ R = $r5; O = $out } { param($R, $O) Write-CAHandoffFiles -Response $R -OutputDir $O }
+            InModuleScope NSP.PKI { Save-CAPfxPassword -CompanyStem 'ExampleCo' -Password 'not-a-real-password' }
+            $keyFile = Join-Path (Get-NSPToolWorkPath -Tool PKI -Kind Answers) 'ExampleCo_FortiGate.pfx.password'
+            Test-Path -LiteralPath $keyFile | Should -BeTrue
+            (Get-Content -LiteralPath $keyFile -Raw) | Should -Not -Match 'not-a-real-password'
+            Mock -ModuleName NSP.PKI Read-Host { throw 'should not prompt' }
+            $id = InModuleScope NSP.PKI -Parameters @{ O = $out } { param($O) Get-CAHandoffIdentity -OutputDir $O -CompanyStem 'ExampleCo' }
+            $id.Thumbprint | Should -Be $Pfx.Thumbprint
+            $id.Password | Should -Be 'not-a-real-password'
+        }
+        It 'Schema 5: asks for the password when the server has no copy, blank = make a new cert' {
+            $out = Join-Path $TestDrive ('s5p_' + [guid]::NewGuid().ToString('N'))
+            $r5 = $Response.PSObject.Copy(); $r5.Schema = 5; $r5.PSObject.Properties.Remove('FortiGatePfxPassword')
+            $null = InModuleScope NSP.PKI -Parameters @{ R = $r5; O = $out } { param($R, $O) Write-CAHandoffFiles -Response $R -OutputDir $O }
+            Mock -ModuleName NSP.PKI Read-Host { 'not-a-real-password' }
+            (InModuleScope NSP.PKI -Parameters @{ O = $out } { param($O) Get-CAHandoffIdentity -OutputDir $O -CompanyStem 'ExampleCo' }).Thumbprint | Should -Be $Pfx.Thumbprint
+            Mock -ModuleName NSP.PKI Read-Host { '' }
+            InModuleScope NSP.PKI -Parameters @{ O = $out } { param($O) Get-CAHandoffIdentity -OutputDir $O -CompanyStem 'ExampleCo' } | Should -BeNullOrEmpty
+        }
+        It 'Read-CAHandoffInputFile uses the NSP.Console file prompt and treats back as cancel' {
+            Mock -ModuleName NSP.PKI Read-NSPFilePath { 'C:\csr\fgt.csr' }
+            InModuleScope NSP.PKI { Read-CAHandoffInputFile -Prompt 'CSR' -Filter 'x|*.csr' } | Should -Be 'C:\csr\fgt.csr'
+            Should -Invoke -ModuleName NSP.PKI Read-NSPFilePath -Times 1 -ParameterFilter { $AllowBack -and $Filter -eq 'x|*.csr' }
+            Mock -ModuleName NSP.PKI Read-NSPFilePath { InModuleScope NSP.Console { $script:NSPBackSignal } }
+            InModuleScope NSP.PKI { Read-CAHandoffInputFile -Prompt 'CSR' } | Should -BeNullOrEmpty
+        }
         It 'still reuses the cert from a zip-era _CAResponse.json' {
             $out = Join-Path $TestDrive ('l_' + [guid]::NewGuid().ToString('N'))
             New-Item -ItemType Directory -Path $out | Out-Null

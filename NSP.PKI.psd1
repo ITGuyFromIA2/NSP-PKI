@@ -1,6 +1,6 @@
 @{
     RootModule        = 'NSP.PKI.psm1'
-    ModuleVersion     = '0.1.2'
+    ModuleVersion     = '0.1.3'
     GUID              = 'fd050238-6af6-404d-a949-8fb31ac05dd0'
     Author            = 'Network Systems Plus'
     CompanyName       = 'Network Systems Plus'
