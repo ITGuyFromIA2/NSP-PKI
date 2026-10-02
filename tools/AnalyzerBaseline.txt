@@ -1,0 +1,20 @@
+# Not linted yet: moved verbatim from the zip-era tool (lint when split one function per file).
+Tests\Legacy\*
+Private\Engine\*
+Scripts\*
+Private\CAAppProxy.ps1
+Private\CACore.ps1
+Private\CACrlShare.ps1
+Private\CAFortiGateHandoff.ps1
+Private\CAGraph.ps1
+Private\CAHealth.ps1
+Private\CAInstall.ps1
+Private\CAInteractive.ps1
+Private\CAOcsp.ps1
+Private\CARenewalTest.ps1
+Private\CATameMyCerts.ps1
+Private\CATemplates.ps1
+Private\CATestSuite.ps1
+Private\CAUrls.ps1
+Private\CAVendorBatch.ps1
+Private\CAWebEndpoints.ps1

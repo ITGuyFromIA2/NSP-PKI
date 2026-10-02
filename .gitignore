@@ -1,0 +1,17 @@
+# Secrets - never commit
+*.sec
+/Secrets/
+secrets*.psd1
+Conf.*.ps1
+!Conf.*.sample.ps1
+*.local.ps1
+*ApiKey*
+*_Pass.txt
+*_Seed.txt
+*.pfx
+*.pem
+
+# Test / build output
+TestResults*.xml
+coverage*.xml
+/.pester/

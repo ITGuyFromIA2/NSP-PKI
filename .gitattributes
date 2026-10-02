@@ -1,0 +1,6 @@
+# CRLF discipline - matches the rest of the NSP repos. PowerShell on Windows, ISE-edited.
+* text=auto eol=crlf
+*.ps1  text eol=crlf
+*.psm1 text eol=crlf
+*.psd1 text eol=crlf
+*.md   text eol=crlf
