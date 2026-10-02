@@ -38,7 +38,7 @@ Test-ScriptParses -Path $Dashboard   -Because "CA-Manager.ps1 parses cleanly aft
 # ---------------------------------------------------------------------------
 <# NSP.PKI: checked in NSP-FGTIPSecTools
 $rawWrap = Get-Content -Path $Wrapper -Raw
-Assert-Match    -Actual $rawWrap -Pattern "\`$TemplateName = 'IKEv2VPN-InternalUsers-MANUAL'" -Because "wrapper keeps the manual template as the default (2026-09-15: renamed from the CLIENTA-specific 'IKEv2VPN-CorpLAN-MANUAL')"
+Assert-Match    -Actual $rawWrap -Pattern "\`$TemplateName = 'IKEv2VPN-InternalUsers-MANUAL'" -Because "wrapper keeps the manual template as the default (2026-09-15: renamed from the CONTOSO-specific 'IKEv2VPN-InternalUsers-MANUAL')"
 Assert-Match    -Actual $rawWrap -Pattern "\`$OutputDir\s*=\s*'C:\\admin'"              -Because "OutputDir is a parameter with the historical default, not a hardcoded literal mid-script"
 Assert-Match    -Actual $rawWrap -Pattern "\[string\]\`$UserName"                        -Because "wrapper exposes -UserName to seed the AD search"
 Assert-Match    -Actual $rawWrap -Pattern "\. \(Join-Path \`$PSScriptRoot 'Request-VPNCertCore\.ps1'\)" -Because "wrapper dot-sources the shared engine"
@@ -75,7 +75,7 @@ Assert-Equal    -Actual ($script:__gcParams['DnsName'] -join '|') -Expected 'jdo
 Assert-Equal    -Actual $script:__gcParams['SubjectName'] -Expected 'E=jdoe@corp.example, CN=John Doe,OU=Users,DC=corp,DC=example' -Because "SubjectName is the historical 'E=<mail>, <DN>' shape"
 Assert-Equal    -Actual $req.Request.Thumbprint -Expected 'THUMB1' -Because "returns Get-Certificate's result object"
 
-# --- 2026-09-15 live bug at CLIENTA: a user with no 'mail' attribute set (several of CLIENTA's own
+# --- 2026-09-15 live bug at CONTOSO: a user with no 'mail' attribute set (several of CONTOSO's own
 #     per-group test accounts) used to get a malformed "E=, CN=..." subject (an empty-valued
 #     emailAddress RDN) - TameMyCerts's own CA-log entry showed it verbatim as 'E="", CN=...'. The
 #     E= RDN must be omitted entirely, not emitted with an empty value, when there's no mail attribute ---
@@ -86,11 +86,11 @@ Assert-Equal -Actual ($script:__gcParams['DnsName'] -join '|') -Expected 'CN=Pla
 
 # --- Resolve-VPNCertTemplateName maps display name -> CN from certutil -CATemplates ---
 function certutil.exe {
-    @('IKEv2VPNCorpLANMANUAL: IKEv2VPN-CorpLAN-MANUAL -- Auto-Enroll',
+    @('IKEv2VPNInternalUsersMANUAL: IKEv2VPN-InternalUsers-MANUAL -- Auto-Enroll',
       'FortiGate: FortiGate -- Auto-Enroll') -join "`r`n"
 }
-Assert-Equal -Actual (Resolve-VPNCertTemplateName -Name 'IKEv2VPN-CorpLAN-MANUAL') -Expected 'IKEv2VPNCorpLANMANUAL' -Because "a display name resolves to the CN certutil reports"
-Assert-Equal -Actual (Resolve-VPNCertTemplateName -Name 'IKEv2VPNCorpLANMANUAL')  -Expected 'IKEv2VPNCorpLANMANUAL' -Because "a name that's already a CN is returned as-is"
+Assert-Equal -Actual (Resolve-VPNCertTemplateName -Name 'IKEv2VPN-InternalUsers-MANUAL') -Expected 'IKEv2VPNInternalUsersMANUAL' -Because "a display name resolves to the CN certutil reports"
+Assert-Equal -Actual (Resolve-VPNCertTemplateName -Name 'IKEv2VPNInternalUsersMANUAL')  -Expected 'IKEv2VPNInternalUsersMANUAL' -Because "a name that's already a CN is returned as-is"
 Assert-Equal -Actual (Resolve-VPNCertTemplateName -Name 'FortiGate')              -Expected 'FortiGate'              -Because "CN == display name still works"
 Assert-Equal -Actual (Resolve-VPNCertTemplateName -Name 'NoSuchTemplate')         -Expected 'NoSuchTemplate'         -Because "an unknown name is passed through unchanged"
 
@@ -154,7 +154,7 @@ Assert-Contains -Haystack ($script:__cu -join ' || ') -Needle "-CRL"            
 Remove-Item function:certutil.exe, function:Revoke-VPNCert -ErrorAction SilentlyContinue
 
 # ---------------------------------------------------------------------------
-# 6b. Find-VPNCertADUser - two real live bugs at CLIENTA, 2026-09-15:
+# 6b. Find-VPNCertADUser - two bug found in the fields at CONTOSO, 2026-09-15:
 #     (a) the multi-match picker table CRASHED ("Index (zero based) must be...") - '-f' binds
 #         TIGHTER than '+' in PowerShell, so the header row's format call ran with only ONE value
 #         against a 3-placeholder format string.
@@ -202,7 +202,7 @@ $threwOnTable = $false
 $picked = $null
 try { $picked = Find-VPNCertADUser -SearchTerm 'jdoe' } catch { $threwOnTable = $true }
 Remove-Item function:Read-Host -ErrorAction SilentlyContinue
-Assert-False -Condition $threwOnTable -Because "the multi-match picker table must render without throwing 'Index (zero based) must be...' - this is the exact crash hit live at CLIENTA with 2 and 5 matches"
+Assert-False -Condition $threwOnTable -Because "the multi-match picker table must render without throwing 'Index (zero based) must be...' - this is the exact crash hit live at CONTOSO with 2 and 5 matches"
 Assert-Equal -Actual $picked.SamAccountName -Expected 'jdoe2' -Because "index 1 of the 2 matches is picked correctly once the table renders"
 
 Remove-Item function:Get-ADUser, function:Find-VPNCertADUser -ErrorAction SilentlyContinue
@@ -222,8 +222,8 @@ function Test-Path { param($Path) $true }
 function New-Item  { }
 function Get-CAManualApprovalTemplates {
     @(
-        [pscustomobject]@{ Cn = 'IKEv2VPNCorpLANMANUAL'; DisplayName = 'IKEv2VPN-CorpLAN-MANUAL' }
-        [pscustomobject]@{ Cn = 'NSPIKEv2PSGIMANUAL';    DisplayName = 'NSP-IKEv2-PSGI-MANUAL' }
+        [pscustomobject]@{ Cn = 'IKEv2VPNInternalUsersMANUAL'; DisplayName = 'IKEv2VPN-InternalUsers-MANUAL' }
+        [pscustomobject]@{ Cn = 'NSPIKEv2SALESMANUAL';    DisplayName = 'NSP-IKEv2-SALES-MANUAL' }
     )
 }
 function Find-VPNCertADUser { param($SearchTerm) if ([string]::IsNullOrWhiteSpace($SearchTerm)) { return $null } [pscustomobject]@{ SamAccountName = "u_$SearchTerm"; UserPrincipalName = "u_$SearchTerm@corp"; mail = "$SearchTerm@corp"; DistinguishedName = "CN=$SearchTerm" } }
@@ -257,8 +257,8 @@ New-CATestCertSuite -Status ([pscustomobject]@{ IssuanceReady = $true; CACommonN
 Assert-Equal -Actual $script:__summary -Expected $null -Because "no published manual-approval templates -> bails before any pick-list/password/username prompt"
 function Get-CAManualApprovalTemplates {
     @(
-        [pscustomobject]@{ Cn = 'IKEv2VPNCorpLANMANUAL'; DisplayName = 'IKEv2VPN-CorpLAN-MANUAL' }
-        [pscustomobject]@{ Cn = 'NSPIKEv2PSGIMANUAL';    DisplayName = 'NSP-IKEv2-PSGI-MANUAL' }
+        [pscustomobject]@{ Cn = 'IKEv2VPNInternalUsersMANUAL'; DisplayName = 'IKEv2VPN-InternalUsers-MANUAL' }
+        [pscustomobject]@{ Cn = 'NSPIKEv2SALESMANUAL';    DisplayName = 'NSP-IKEv2-SALES-MANUAL' }
     )
 }
 
@@ -269,26 +269,26 @@ $script:__certutilCalls.Clear()
 $script:__summary = $null
 $script:__rhQ.Clear()
 @(
-    '1',           # pick-list: template #1 only (IKEv2VPN-CorpLAN-MANUAL)
+    '1',           # pick-list: template #1 only (IKEv2VPN-InternalUsers-MANUAL)
     '',            # output dir -> default
     'pw', 'pw',    # PFX password + confirm (Test-SecureStringMatch mocked true)
     'jdoe',        # representative username for the one picked template
     '',            # ONE "approve ALL then Enter"
     ''             # "Press Enter to return"
 ) | ForEach-Object { $script:__rhQ.Enqueue($_) }
-New-CATestCertSuite -Status ([pscustomobject]@{ IssuanceReady = $true; CACommonName = 'CONTOSO-VPN' }) -CAAnswers ([pscustomobject]@{ Company_Name = 'CLIENTA' })
+New-CATestCertSuite -Status ([pscustomobject]@{ IssuanceReady = $true; CACommonName = 'CONTOSO-VPN' }) -CAAnswers ([pscustomobject]@{ Company_Name = 'CONTOSO' })
 
 Assert-Equal    -Actual $script:__revokeCalls.Count -Expected 1 -Because "exactly one cert per picked template is revoked (the 'revoked' half of the set)"
 Assert-Contains -Haystack $script:__revokeCalls[0] -Needle "/0/" -Because "revoke uses reason 0 (unspecified)"
 Assert-Equal    -Actual (@($script:__certutilCalls | Where-Object { $_ -eq '-crl' }).Count) -Expected 1 -Because "the CRL is republished exactly ONCE for the whole revoked set (not per cert)"
 Assert-True     -Condition ([bool]$script:__summary) -Because "a summary file is written"
-Assert-Match    -Actual $script:__summary.Path  -Pattern 'CLIENTA_CertTestSuite_\d{8}_\d{6}\.txt$' -Because "summary is named <Company>_CertTestSuite_<timestamp>.txt"
+Assert-Match    -Actual $script:__summary.Path  -Pattern 'CONTOSO_CertTestSuite_\d{8}_\d{6}\.txt$' -Because "summary is named <Company>_CertTestSuite_<timestamp>.txt"
 Assert-Contains -Haystack $script:__summary.Value -Needle "execute vpn certificate crl update" -Because "summary hands the tech the FortiGate CRL-refresh command"
 Assert-Contains -Haystack $script:__summary.Value -Needle "certificate-revoked" -Because "summary explains the expected post-revoke FortiGate behaviour"
-Assert-Contains -Haystack $script:__summary.Value -Needle "IKEv2VPN-CorpLAN-MANUAL" -Because "summary lists the picked template's DisplayName"
-Assert-NotContains -Haystack $script:__summary.Value -Needle "NSP-IKEv2-PSGI-MANUAL" -Because "only the PICKED template appears - the unpicked second published template is not touched"
-Assert-Contains -Haystack $script:__summary.Value -Needle "SER_ujdoe_IKEv2VPNCorpLANMANUAL_revoked" -Because "summary records the revoked cert's serial (file-name stem = user_templateCN_kind, sanitized to [A-Za-z0-9])"
-Assert-Match -Actual $script:__summary.Value -Pattern 'cer .*ujdoe_IKEv2VPNCorpLANMANUAL_valid\.cer' -Because "summary also lists the public-key-only .cer path exported alongside each PFX - The maintainer: 'why didn't I have you do it during generation time'"
+Assert-Contains -Haystack $script:__summary.Value -Needle "IKEv2VPN-InternalUsers-MANUAL" -Because "summary lists the picked template's DisplayName"
+Assert-NotContains -Haystack $script:__summary.Value -Needle "NSP-IKEv2-SALES-MANUAL" -Because "only the PICKED template appears - the unpicked second published template is not touched"
+Assert-Contains -Haystack $script:__summary.Value -Needle "SER_ujdoe_IKEv2VPNInternalUsersMANUAL_revoked" -Because "summary records the revoked cert's serial (file-name stem = user_templateCN_kind, sanitized to [A-Za-z0-9])"
+Assert-Match -Actual $script:__summary.Value -Pattern 'cer .*ujdoe_IKEv2VPNInternalUsersMANUAL_valid\.cer' -Because "summary also lists the public-key-only .cer path exported alongside each PFX - The maintainer: 'why didn't I have you do it during generation time'"
 
 # --- 7d: comma-separated multi-pick (both templates) -> one username prompt per picked template,
 #     in list order; a blank username for one skips just that template's pair, not the whole run ---
@@ -300,14 +300,14 @@ $script:__rhQ.Clear()
     '1,2',         # pick-list: both templates, comma-separated
     '',            # output dir -> default
     'pw', 'pw',    # PFX password + confirm
-    'jdoe',        # username for template #1 (IKEv2VPN-CorpLAN-MANUAL)
+    'jdoe',        # username for template #1 (IKEv2VPN-InternalUsers-MANUAL)
     '',            # blank username for template #2 -> skipped
     '',            # ONE "approve ALL then Enter" (only template #1's pair is pending)
     ''             # "Press Enter to return"
 ) | ForEach-Object { $script:__rhQ.Enqueue($_) }
-New-CATestCertSuite -Status ([pscustomobject]@{ IssuanceReady = $true; CACommonName = 'CONTOSO-VPN' }) -CAAnswers ([pscustomobject]@{ Company_Name = 'CLIENTA' })
-Assert-Contains -Haystack $script:__summary.Value -Needle "IKEv2VPN-CorpLAN-MANUAL, NSP-IKEv2-PSGI-MANUAL" -Because "the summary's Templates: header lists every PICKED template, even one whose username prompt was skipped"
-Assert-Equal    -Actual $script:__revokeCalls.Count -Expected 1 -Because "a blank username at the per-template prompt skips that template's cert pair entirely - only the CorpLAN pair (username given) was actually issued, PSGI's was not"
+New-CATestCertSuite -Status ([pscustomobject]@{ IssuanceReady = $true; CACommonName = 'CONTOSO-VPN' }) -CAAnswers ([pscustomobject]@{ Company_Name = 'CONTOSO' })
+Assert-Contains -Haystack $script:__summary.Value -Needle "IKEv2VPN-InternalUsers-MANUAL, NSP-IKEv2-SALES-MANUAL" -Because "the summary's Templates: header lists every PICKED template, even one whose username prompt was skipped"
+Assert-Equal    -Actual $script:__revokeCalls.Count -Expected 1 -Because "a blank username at the per-template prompt skips that template's cert pair entirely - only the InternalUsers pair (username given) was actually issued, SALES's was not"
 
 # --- 7e: 'A' selects every published template ---
 $script:__revokeCalls.Clear()
@@ -323,7 +323,7 @@ $script:__rhQ.Clear()
     '',                 # ONE "approve ALL then Enter"
     ''                  # "Press Enter to return"
 ) | ForEach-Object { $script:__rhQ.Enqueue($_) }
-New-CATestCertSuite -Status ([pscustomobject]@{ IssuanceReady = $true; CACommonName = 'CONTOSO-VPN' }) -CAAnswers ([pscustomobject]@{ Company_Name = 'CLIENTA' })
+New-CATestCertSuite -Status ([pscustomobject]@{ IssuanceReady = $true; CACommonName = 'CONTOSO-VPN' }) -CAAnswers ([pscustomobject]@{ Company_Name = 'CONTOSO' })
 Assert-Equal -Actual $script:__revokeCalls.Count -Expected 2 -Because "'A' picks both published templates, each getting its own valid+revoked pair"
 
 # ---------------------------------------------------------------------------
@@ -335,21 +335,21 @@ Assert-Equal -Actual $script:__revokeCalls.Count -Expected 2 -Because "'A' picks
 # 7f: 'B' at the template pick-list prompt itself
 $script:__revokeCalls.Clear(); $script:__certutilCalls.Clear(); $script:__summary = $null; $script:__rhQ.Clear()
 @('b') | ForEach-Object { $script:__rhQ.Enqueue($_) }
-New-CATestCertSuite -Status ([pscustomobject]@{ IssuanceReady = $true; CACommonName = 'CONTOSO-VPN' }) -CAAnswers ([pscustomobject]@{ Company_Name = 'CLIENTA' })
+New-CATestCertSuite -Status ([pscustomobject]@{ IssuanceReady = $true; CACommonName = 'CONTOSO-VPN' }) -CAAnswers ([pscustomobject]@{ Company_Name = 'CONTOSO' })
 Assert-Equal -Actual $script:__summary -Expected $null -Because "'B' (case-insensitive, no confirmation prompt needed) at the template pick-list cancels immediately - no output dir/password/username prompts, no summary"
 Assert-Equal -Actual $script:__rhQ.Count -Expected 0 -Because "exactly one prompt was consumed - cancelling doesn't fall through to any later prompt"
 
 # 7g: 'BACK' (the longer form) at the output-directory prompt
 $script:__summary = $null; $script:__rhQ.Clear()
 @('1', 'Back') | ForEach-Object { $script:__rhQ.Enqueue($_) }
-New-CATestCertSuite -Status ([pscustomobject]@{ IssuanceReady = $true; CACommonName = 'CONTOSO-VPN' }) -CAAnswers ([pscustomobject]@{ Company_Name = 'CLIENTA' })
+New-CATestCertSuite -Status ([pscustomobject]@{ IssuanceReady = $true; CACommonName = 'CONTOSO-VPN' }) -CAAnswers ([pscustomobject]@{ Company_Name = 'CONTOSO' })
 Assert-Equal -Actual $script:__summary -Expected $null -Because "the longer 'Back' form is also accepted, at the output-directory prompt too"
 Assert-Equal -Actual $script:__rhQ.Count -Expected 0 -Because "cancels before ever reaching the password prompt"
 
 # 7h: 'B' at the PFX password prompt (decrypted just for this one comparison)
 $script:__summary = $null; $script:__rhQ.Clear()
 @('1', '', 'B') | ForEach-Object { $script:__rhQ.Enqueue($_) }
-New-CATestCertSuite -Status ([pscustomobject]@{ IssuanceReady = $true; CACommonName = 'CONTOSO-VPN' }) -CAAnswers ([pscustomobject]@{ Company_Name = 'CLIENTA' })
+New-CATestCertSuite -Status ([pscustomobject]@{ IssuanceReady = $true; CACommonName = 'CONTOSO-VPN' }) -CAAnswers ([pscustomobject]@{ Company_Name = 'CONTOSO' })
 Assert-Equal -Actual $script:__summary -Expected $null -Because "'B' as the PFX password itself cancels - never reaches the 'confirm password' prompt"
 Assert-Equal -Actual $script:__rhQ.Count -Expected 0 -Because "the confirm-password prompt is never asked once the first one is 'B'"
 
@@ -358,7 +358,7 @@ Assert-Equal -Actual $script:__rhQ.Count -Expected 0 -Because "the confirm-passw
 #     must not fall through to prompting for the second template's username at all.
 $script:__summary = $null; $script:__rhQ.Clear()
 @('A', '', 'pw', 'pw', 'back') | ForEach-Object { $script:__rhQ.Enqueue($_) }
-New-CATestCertSuite -Status ([pscustomobject]@{ IssuanceReady = $true; CACommonName = 'CONTOSO-VPN' }) -CAAnswers ([pscustomobject]@{ Company_Name = 'CLIENTA' })
+New-CATestCertSuite -Status ([pscustomobject]@{ IssuanceReady = $true; CACommonName = 'CONTOSO-VPN' }) -CAAnswers ([pscustomobject]@{ Company_Name = 'CONTOSO' })
 Assert-Equal -Actual $script:__summary -Expected $null -Because "'B' at a per-template username prompt cancels the ENTIRE run (not just that one template) - no summary, no certs for either template"
 Assert-Equal -Actual $script:__rhQ.Count -Expected 0 -Because "never falls through to a second template's own username prompt after cancelling"
 

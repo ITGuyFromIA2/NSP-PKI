@@ -146,15 +146,15 @@ function New-VPNCertRequest {
         [string]$CertStoreLocation = 'Cert:\CurrentUser\My'
     )
 
-    # Get-Certificate wants the template CN, not the display name (IKEv2VPN-CorpLAN-MANUAL ->
-    # IKEv2VPNCorpLANMANUAL). Resolve it against what the CA actually publishes.
+    # Get-Certificate wants the template CN, not the display name (IKEv2VPN-InternalUsers-MANUAL ->
+    # IKEv2VPNInternalUsersMANUAL). Resolve it against what the CA actually publishes.
     $TemplateName = Resolve-VPNCertTemplateName -Name $TemplateName
 
     # SAN = mail + DN, blanks filtered (a user with no 'mail' attribute would otherwise pass $null).
     $dnsName = @($ADUser.mail, $ADUser.DistinguishedName) | Where-Object { $_ }
     # 2026-09-15, real bug found live at a client (TameMyCerts's own CA-log entry showed 'E="", CN=...' -
     # an emailAddress RDN with an EMPTY value): a test account with no 'mail' attribute set (several
-    # of that client's per-group test users - IV2.Plant, IV2.PSGI, IV2.Auditor) used to always get an
+    # of that client's per-group test users - IV2.Plant, IV2.SALES, IV2.Auditor) used to always get an
     # "E=$mail, " prefix even when $mail was $null/blank, producing a malformed empty-valued RDN.
     # Omit the E= RDN entirely when there's no mail attribute to put in it.
     $subject = if ($ADUser.mail) { "E=$($ADUser.mail), $($ADUser.DistinguishedName)" } else { "$($ADUser.DistinguishedName)" }

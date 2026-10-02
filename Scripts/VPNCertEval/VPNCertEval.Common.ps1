@@ -298,6 +298,26 @@ function Get-EvalServiceCatalog {
     }
 }
 
+function Get-EvalLocalRdpPattern {
+    <#
+    .SYNOPSIS
+        Optional site-specific names that mean "this endpoint is reached over RDP" (line-of-business
+        apps, terminal-server names), kept OUT of this shared script: a regex in RdpNamePattern of
+        VPNCertEval.LocalMap.psd1 next to this file, or of the .psd1 named by NSP_VPNCERTEVAL_MAP.
+        Read as data only. Returns $null when there is none.
+    .EXAMPLE
+        # VPNCertEval.LocalMap.psd1
+        @{ RdpNamePattern = 'ERPApp|PayrollSrv' }
+    #>
+    $path = if ($env:NSP_VPNCERTEVAL_MAP) { $env:NSP_VPNCERTEVAL_MAP } else { Join-Path $PSScriptRoot 'VPNCertEval.LocalMap.psd1' }
+    if (-not (Test-Path -LiteralPath $path)) { return $null }
+    try {
+        $map = Import-PowerShellDataFile -Path $path -ErrorAction Stop
+        if ($map.RdpNamePattern) { [void]([regex]::new([string]$map.RdpNamePattern)); return [string]$map.RdpNamePattern }
+    } catch { Write-Warning "Ignoring ${path}: $($_.Exception.Message)" }
+    return $null
+}
+
 function Get-EvalServiceNamesForGroup {
     <#
     .SYNOPSIS
@@ -307,7 +327,8 @@ function Get-EvalServiceNamesForGroup {
     param([string]$ServiceGroupName)
     $n = "$ServiceGroupName"
     $set = New-Object System.Collections.Generic.List[string]
-    if ($n -match 'RDS|RDP|Remote *Desktop|PlantDT') { $set.Add('RDP') }
+    $localRdp = Get-EvalLocalRdpPattern
+    if ($n -match 'RDS|RDP|Remote *Desktop' -or ($localRdp -and $n -match $localRdp)) { $set.Add('RDP') }
     if ($n -match 'AS400|iSeries|5250')             { $set.Add('RDP'); $set.Add('Telnet') }
     if ($n -match 'SMB|File|CIFS')                  { $set.Add('SMB') }
     if ($n -match 'DC|Domain|Kerb|LDAP')            { $set.Add('Kerberos'); $set.Add('LDAP') }
@@ -330,7 +351,8 @@ function Get-EvalServicesForLabelText {
     if ($n -match 'RDS|RDP|Remote Desktop') { $set.Add('RDP') }
     if ($n -match '3CX|Phone|SIP|Voice') { $set.Add('SIP'); $set.Add('HTTPS'); $set.Add('3CX-5001') }
     if ($n -match 'HVAC') { $set.Add('SSH'); $set.Add('Telnet'); $set.Add('HTTPS') }
-    if ($n -match 'HMRS|MAS90|Util|MercyOne|ISDG|Houlihan|Sage') { $set.Add('RDP') }
+    $localRdp = Get-EvalLocalRdpPattern
+    if ($localRdp -and $n -match $localRdp) { $set.Add('RDP') }
     if ($set.Count -eq 0) { $set.Add('Ping'); $set.Add('RDP') }
     if (-not $set.Contains('Ping')) { $set.Add('Ping') }
     return ($set.ToArray() | Select-Object -Unique)
@@ -413,11 +435,38 @@ function Invoke-EvalReachabilityMatrix {
 function Read-EvalTargets {
     param([Parameter(Mandatory)][string]$Path)
     if (-not (Test-Path $Path)) { throw "Targets file not found: $Path" }
-    if (Get-Command Import-PowerShellDataFile -ErrorAction SilentlyContinue) {
-        return Import-PowerShellDataFile -Path $Path
+    # Data only (5.1+ always has Import-PowerShellDataFile) - never executed (security review SEC-B6).
+    return Import-PowerShellDataFile -Path $Path
+}
+
+function Assert-EvalLiteralAst {
+    <#
+    .SYNOPSIS
+        Throws unless -Ast is a pure data literal: hashtables ([ordered] allowed), arrays, numbers,
+        plain strings, $true/$false/$null. No commands, method/member calls, sub-expressions,
+        script blocks or other variables - so evaluating it cannot run anything (security review SEC-B6).
+    #>
+    param([Parameter(Mandatory)][System.Management.Automation.Language.Ast]$Ast, [string]$Name = 'value')
+    foreach ($n in @($Ast) + @($Ast.FindAll({ $true }, $true))) {
+        $ok = switch ($n.GetType().Name) {
+            'PipelineAst'                   { @($n.PipelineElements | Where-Object { $_ -isnot [System.Management.Automation.Language.CommandExpressionAst] }).Count -eq 0 }
+            'CommandExpressionAst'          { $true }
+            'StatementBlockAst'             { $true }
+            'HashtableAst'                  { $true }
+            'ArrayLiteralAst'               { $true }
+            'ArrayExpressionAst'            { $true }
+            'ParenExpressionAst'            { $true }
+            'ConstantExpressionAst'         { $true }
+            'StringConstantExpressionAst'   { $true }
+            'ExpandableStringExpressionAst' { $n.NestedExpressions.Count -eq 0 }
+            'VariableExpressionAst'         { $n.VariablePath.UserPath -in 'true', 'false', 'null' }
+            'UnaryExpressionAst'            { $n.TokenKind -in 'Minus', 'Plus' -and $n.Child -is [System.Management.Automation.Language.ConstantExpressionAst] }
+            'ConvertExpressionAst'          { $n.Type.TypeName.Name -eq 'ordered' -and $n.Child -is [System.Management.Automation.Language.HashtableAst] }
+            'TypeConstraintAst'             { $n.TypeName.Name -eq 'ordered' }
+            default                         { $false }
+        }
+        if (-not $ok) { throw "`$$Name is not a plain data literal (found $($n.GetType().Name) at line $($n.Extent.StartLineNumber)) - refusing to evaluate it." }
     }
-    $raw = Get-Content -Path $Path -Raw
-    return (Invoke-Expression $raw)
 }
 
 function ConvertTo-EvalPsd1 {
@@ -468,6 +517,7 @@ function ConvertFrom-UnitTestsFile {
     .SYNOPSIS
         Pulls the $Endpoints and $ServiceChecks literals out of a User-UnitTests-style .ps1 via AST
         (no execution of the rest of the file). Returns @{ Endpoints = [ordered]; ServiceChecks = [ordered] }.
+        Each right-hand side must be a pure data literal (Assert-EvalLiteralAst) before it is evaluated.
     #>
     param([Parameter(Mandatory)][string]$Path)
     $tokens = $null; $perr = $null
@@ -483,7 +533,8 @@ function ConvertFrom-UnitTestsFile {
             $n.Left.VariablePath.UserPath -eq $VarName
         }, $true) | Select-Object -First 1
         if (-not $node) { return $null }
-        return (Invoke-Expression $node.Right.Extent.Text)
+        Assert-EvalLiteralAst -Ast $node.Right -Name $VarName
+        return (& ([scriptblock]::Create($node.Right.Extent.Text)))
     }
 
     return @{

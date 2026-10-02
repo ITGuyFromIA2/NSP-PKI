@@ -52,7 +52,7 @@ function Get-CAVpnTemplateSpec {
         own short abbreviation) is the tech's choice at create time.
     #>
     param(
-        # 2026-09-15, per the maintainer: the shared default used to be "IKEv2VPN-CorpLAN"/"-MANUAL" - lifted
+        # 2026-09-15, per the maintainer: the shared default used to be "IKEv2VPN-InternalUsers"/"-MANUAL" - lifted
         # straight from a real client's own setup, not a generic starting point. "InternalUsers" is this
         # codebase's own established generic name for the primary IKEv2 VPN AD group (AD-Manager's own
         # scaffold creates "IKEv2_InternalUsers" - project_ad_manager.md) - only the DISPLAY NAME
@@ -82,7 +82,7 @@ function Get-CAVpnTemplateSpec {
     $autoNameFlag = if ($IssuingModel -eq 'DedicatedIssuingCA') { '0xA6000000' } else { '0x82000000' }
 
     # The user templates (Auto / Manual) and FortiGate are schema v2 - matches a real client's live
-    # IKEv2VPN-CorpLAN / -MANUAL, which auto-enroll in production. DefaultCsps is left EMPTY so the
+    # IKEv2VPN-InternalUsers / -MANUAL, which auto-enroll in production. DefaultCsps is left EMPTY so the
     # enrolling client picks a working provider itself (a v2 template pinned to a CNG *KSP* only ->
     # CRYPT_E_NO_PROVIDER on the legacy enrollment path). A v4 template is NOT raw-ADSI-authorable:
     # its msPKI-RA-Application-Policies blob must also carry co-sign policy OIDs, and a v4 template
@@ -326,7 +326,7 @@ function Get-CAPerGroupManualTemplateSpec {
     .SYNOPSIS
         PURE. Given one per-group Auto template spec (one row from Get-CAPerGroupTemplateSpecs), builds
         its admin-approved, exportable MANUAL counterpart - same crypto/EKU baseline, DisplayName
-        suffixed "-MANUAL" (mirrors the existing shared IKEv2VPN-CorpLAN / -MANUAL pairing, just
+        suffixed "-MANUAL" (mirrors the existing shared IKEv2VPN-InternalUsers / -MANUAL pairing, just
         per-group instead of once). 2026-09-15, per the maintainer: "for any 'template' we generate, we also
         need to allow a manual admin request against it" - lets a tech manually request/troubleshoot
         ONE specific group's VPN cert shape (e.g. testing a particular client's own subject/OU requirements) without
@@ -493,7 +493,7 @@ function Get-CAManualApprovalTemplates {
         msPKI-Enrollment-Flag has CT_FLAG_PEND_ALL_REQUESTS (0x2) set - i.e. admin-approved / "Manual
         approval" templates, the shape menu 11's test-cert suite (and Request-VPNCert.ps1) issue
         against. 2026-09-15, per the maintainer: menu 11 used to take a free-typed template name (one default,
-        the single shared IKEv2VPN-CorpLAN-MANUAL) - now that per-group manual templates exist
+        the single shared IKEv2VPN-InternalUsers-MANUAL) - now that per-group manual templates exist
         (Get-CAPerGroupManualTemplateSpec, one per RadiusGroupPair), a tech needs to actually SEE
         what's published and pick from a numbered list instead of guessing/remembering exact names.
 

@@ -35,7 +35,7 @@ $ans = [pscustomobject]@{ CA_AppProxyCrlFqdn = ''; CA_AppProxyOcspFqdn = '' }
 $statusGood = [pscustomobject]@{
     CACommonName            = 'Contoso-CA'
     ExpectedTemplateStatus  = @(
-        [pscustomobject]@{ Name = 'IKEv2VPN-CorpLAN'; Published = $true }
+        [pscustomobject]@{ Name = 'IKEv2VPN-InternalUsers'; Published = $true }
         [pscustomobject]@{ Name = 'FortiGate';        Published = $true }
     )
     AutoEnrollPolicyPresent = $true
@@ -62,7 +62,7 @@ Assert-Equal -Actual ($report | Where-Object Id -eq 'verify').State -Expected 'S
 $statusBad = [pscustomobject]@{
     CACommonName            = 'Contoso-CA'
     ExpectedTemplateStatus  = @(
-        [pscustomobject]@{ Name = 'IKEv2VPN-CorpLAN'; Published = $true }
+        [pscustomobject]@{ Name = 'IKEv2VPN-InternalUsers'; Published = $true }
         [pscustomobject]@{ Name = 'FortiGate';        Published = $false }
     )
     AutoEnrollPolicyPresent = $false

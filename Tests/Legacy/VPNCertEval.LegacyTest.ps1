@@ -166,4 +166,46 @@ Assert-Match -Actual $runSrc -Pattern 'Disconnect FortiClient' -Because "runner 
 Assert-Match -Actual $runSrc -Pattern 'ImportExcel' -Because "runner writes xlsx when ImportExcel is available"
 Assert-NoMatch -Actual $runSrc -Pattern 'Read-Host .*[Pp]assword.*User|username.*password' -Because "runner does NOT prompt for / inject VPN credentials (MFA is interactive)"
 
+# ---------------------------------------------------------------------------
+# 11. Security review SEC-B6 / AR-4 (2026-10-02): unit-test files are data only; no site names here
+# ---------------------------------------------------------------------------
+. $Common
+$utDir = Join-Path $env:TEMP ("vpneval_" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $utDir -Force | Out-Null
+try {
+    $marker = Join-Path $utDir 'ran.txt'
+    $good = Join-Path $utDir 'good.ps1'
+    Set-Content -Path $good -Value @"
+`$Endpoints = [ordered]@{ 'dc01.contoso.local' = 'DC'; '192.0.2.10' = 'File Server' }
+`$ServiceChecks = [ordered]@{ RDP = @{ TCP = @(3389); UDP = @() }; Neg = -1; On = `$true }
+Write-Output 'the rest of the file never runs'
+"@
+    $ut = ConvertFrom-UnitTestsFile -Path $good
+    Assert-Equal -Actual @($ut.Endpoints.Keys)[0] -Expected 'dc01.contoso.local' -Because "a plain [ordered] literal still loads, in order"
+    Assert-Equal -Actual $ut.ServiceChecks.Neg -Expected -1 -Because "signed numbers and booleans are data"
+
+    $bad = Join-Path $utDir 'bad.ps1'
+    Set-Content -Path $bad -Value "`$Endpoints = @{ 'x' = (Set-Content -Path '$marker' -Value 1) }"
+    $threw = $false; try { $null = ConvertFrom-UnitTestsFile -Path $bad } catch { $threw = $true }
+    Assert-True -Condition $threw -Because "a command inside `$Endpoints is refused, not evaluated"
+    Assert-False -Condition (Test-Path $marker) -Because "...and the command never ran"
+    foreach ($payload in @('"$(Get-Date)"', '[Environment]::MachineName', '{ Get-Date }', '$env:USERNAME')) {
+        Set-Content -Path $bad -Value "`$Endpoints = @{ 'x' = $payload }"
+        $threw = $false; try { $null = ConvertFrom-UnitTestsFile -Path $bad } catch { $threw = $true }
+        Assert-True -Condition $threw -Because "refused: $payload"
+    }
+
+    $srcCommon = Get-Content $Common -Raw
+    Assert-NoMatch -Actual $srcCommon -Pattern 'Invoke-Expression' -Because "nothing in VPNCertEval.Common.ps1 runs text as code"
+    $map = Join-Path $utDir 'map.psd1'
+    Set-Content -Path $map -Value "@{ RdpNamePattern = 'ERPApp' }"
+    $env:NSP_VPNCERTEVAL_MAP = $map
+    try {
+        Assert-True -Condition (@(Get-EvalServiceNamesForGroup -ServiceGroupName 'IKEv2_ERPApp_Services') -contains 'RDP') -Because "a local RdpNamePattern maps a site's app name to RDP"
+    } finally { $env:NSP_VPNCERTEVAL_MAP = $null }
+    Assert-False -Condition (@(Get-EvalServiceNamesForGroup -ServiceGroupName 'IKEv2_ERPApp_Services') -contains 'RDP') -Because "...and only while that map is in place"
+} finally {
+    Remove-Item -Path $utDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 Write-TestSummary -Suite "VPN cert evaluation harness"

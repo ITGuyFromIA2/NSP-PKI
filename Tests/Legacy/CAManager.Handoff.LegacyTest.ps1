@@ -57,8 +57,8 @@ $ans = [pscustomobject]@{
     CA_AppProxyCrlFqdn   = 'crl-contoso.msappproxy.net'
     CA_AppProxyOcspFqdn  = 'ocsp-contoso.msappproxy.net'
     CA_AutoEnrollGPOName = 'NSP - Certificate Auto-Enrollment'
-    CA_TemplateAuto      = 'IKEv2VPN-CorpLAN'
-    CA_TemplateManual    = 'IKEv2VPN-CorpLAN-MANUAL'
+    CA_TemplateAuto      = 'IKEv2VPN-InternalUsers'
+    CA_TemplateManual    = 'IKEv2VPN-InternalUsers-MANUAL'
     CA_TemplateFortiGate = 'FortiGate'
 }
 $fg = [pscustomobject]@{ PfxPath = 'C:\Admin\Handoff\Contoso\ContosoLtd_FortiGate.pfx'; Password = 'p@ss'; Thumbprint = 'ABC123'; SerialNumber = '01' }
@@ -76,7 +76,7 @@ Assert-Equal -Actual $resp.FortiGatePfxFile -Expected 'ContosoLtd_FortiGate.pfx'
 Assert-False -Condition ([bool]$resp.Contains('FortiGatePfxPassword')) -Because "Schema 5: the PFX password is never in the hand-back (review FI-3 - file + password = the private key)"
 Assert-Equal -Actual $resp.AppProxyCrlUrl -Expected 'http://crl-contoso.msappproxy.net/CertEnroll/Contoso-Issuing-CA.crl' -Because "CRL URL composed from CA_AppProxyCrlFqdn"
 Assert-Equal -Actual $resp.AppProxyOcspUrl -Expected 'http://ocsp-contoso.msappproxy.net/ocsp' -Because "OCSP URL composed from CA_AppProxyOcspFqdn"
-Assert-Equal -Actual ($resp.TemplatesPublished -join ',') -Expected 'IKEv2VPN-CorpLAN,IKEv2VPN-CorpLAN-MANUAL,FortiGate' -Because "the three user/device templates are listed"
+Assert-Equal -Actual ($resp.TemplatesPublished -join ',') -Expected 'IKEv2VPN-InternalUsers,IKEv2VPN-InternalUsers-MANUAL,FortiGate' -Because "the three user/device templates are listed"
 
 # ---------------------------------------------------------------------------
 # 3a. Schema 2 (2026-09-11) - the single-file hand-back: FortiGatePfxBase64 embedded directly in the
@@ -163,7 +163,7 @@ Remove-Item function:Get-CAFortiGatePeerPlan, function:Write-CAHeader, function:
 . "$Mod\CAFortiGateHandoff.ps1"
 
 # ---------------------------------------------------------------------------
-# 2b. 2026-09-15 real live bug at CLIENTA - menu 13's wizard steps used .GetNewClosure(), which
+# 2b. 2026-09-15 bug found in the field at CONTOSO - menu 13's wizard steps used .GetNewClosure(), which
 #     detaches a scriptblock into its own session state that only chains up to GLOBAL scope (plus
 #     its captured variables) - NOT through an intermediate SCRIPT scope. Invisible when
 #     CA-Manager.ps1 is dot-sourced or run directly (as every other test in this suite does), but
@@ -256,15 +256,15 @@ Assert-True   -Condition ($null -eq $respPem.FortiGatePfxFile -and $null -eq $re
 
 # ---------------------------------------------------------------------------
 # 6. Get-CAFortiGatePeerPlan (2026-09-15) - one config user peer per RadiusGroupPair, bundled into
-#    one peergrp, per the maintainer's CLIENTA live-troubleshooting ask: "I want a peer for each of the groups,
+#    one peergrp, per the maintainer's CONTOSO live-troubleshooting ask: "I want a peer for each of the groups,
 #    but NOT the VPNFW groups."
 # ---------------------------------------------------------------------------
 $tmcAns = [pscustomobject]@{
     CA_SubjectStampMode = 'TameMyCerts'
     RadiusGroupPairs = @(
-        [pscustomobject]@{ Label = 'CLIENTA';  UserGroupValue = 'ikev2_corplan_users' }
+        [pscustomobject]@{ Label = 'CONTOSO';  UserGroupValue = 'ikev2_internalusers_users' }
         [pscustomobject]@{ Label = 'Audit';  UserGroupValue = 'ikev2_audit_users' }
-        [pscustomobject]@{ Label = 'DIv2-RedStone'; UserGroupValue = 'ikev2_redstone_users' }
+        [pscustomobject]@{ Label = 'DIv2-Warehouse'; UserGroupValue = 'ikev2_warehouse_users' }
         # The three VPNFW/AS400 pairs - IncludeInNPSImport:false, same signal
         # OrchestratorImport.ps1's own NPS-Manager import already uses to skip these (CLIBuilder's
         # Custom App-Access Rules flow defaults new pairs to this) - MUST be excluded from the peer plan.
@@ -276,15 +276,15 @@ $tmcAns = [pscustomobject]@{
 $peerPlan = Get-CAFortiGatePeerPlan -CAAnswers $tmcAns
 Assert-True  -Condition $peerPlan.Applicable -Because "TameMyCerts + at least one qualifying RadiusGroupPair -> applicable"
 Assert-Equal -Actual $peerPlan.PeerGroupName -Expected 'IKEv2_DIv2_AllowedPeers' -Because "The maintainer's own naming (2026-09-15), the default"
-Assert-Equal -Actual $peerPlan.Peers.Count -Expected 3 -Because "3 qualifying pairs (CLIENTA/Audit/DIv2-RedStone) - the 3 VPNFW/AS400 pairs are excluded"
+Assert-Equal -Actual $peerPlan.Peers.Count -Expected 3 -Because "3 qualifying pairs (CONTOSO/Audit/DIv2-Warehouse) - the 3 VPNFW/AS400 pairs are excluded"
 Assert-False -Condition ([bool]($peerPlan.Peers | Where-Object { $_.PeerName -like '*AS400*' -or $_.PeerName -like '*Hangar*' })) -Because "none of the excluded VPNFW pairs leaked through under any name"
 
-$clientaPeer = $peerPlan.Peers | Where-Object GroupLabel -eq 'CLIENTA'
-Assert-Equal -Actual $clientaPeer.PeerName -Expected 'P_IKEv2_DIv2_CLIENTA' -Because "default prefix 'P_IKEv2_DIv2_' (2026-09-15, per the maintainer: 'P_' marks a peer object at a glance, same spirit as CA certs' 'CA_') + the pair's own Label"
-Assert-Equal -Actual $clientaPeer.OuValue  -Expected 'ikev2_corplan_users' -Because "OU token = the real AD group (UserGroupValue), matching TameMyCerts's own stamp exactly - unaffected by the peer NAME prefix"
+$clientaPeer = $peerPlan.Peers | Where-Object GroupLabel -eq 'CONTOSO'
+Assert-Equal -Actual $clientaPeer.PeerName -Expected 'P_IKEv2_DIv2_CONTOSO' -Because "default prefix 'P_IKEv2_DIv2_' (2026-09-15, per the maintainer: 'P_' marks a peer object at a glance, same spirit as CA certs' 'CA_') + the pair's own Label"
+Assert-Equal -Actual $clientaPeer.OuValue  -Expected 'ikev2_internalusers_users' -Because "OU token = the real AD group (UserGroupValue), matching TameMyCerts's own stamp exactly - unaffected by the peer NAME prefix"
 
-$redstonePeer = $peerPlan.Peers | Where-Object GroupLabel -eq 'DIv2-RedStone'
-Assert-Equal -Actual $redstonePeer.PeerName -Expected 'P_IKEv2_DIv2_RedStone' -Because "a Label that already carries its own 'DIv2-' marker has that redundant prefix stripped, not doubled into 'P_IKEv2_DIv2_DIv2-RedStone'"
+$warehousePeer = $peerPlan.Peers | Where-Object GroupLabel -eq 'DIv2-Warehouse'
+Assert-Equal -Actual $warehousePeer.PeerName -Expected 'P_IKEv2_DIv2_Warehouse' -Because "a Label that already carries its own 'DIv2-' marker has that redundant prefix stripped, not doubled into 'P_IKEv2_DIv2_DIv2-Warehouse'"
 
 # a pair saved before IncludeInNPSImport existed (the property is simply absent) is still included -
 # same "absent = treat as true" rule OrchestratorImport.ps1 already established
@@ -309,7 +309,7 @@ Assert-NoMatch -Actual $srcPeerPlan -Pattern 'Invoke-CAStep|New-Item|Set-ItemPro
 # ---------------------------------------------------------------------------
 $tmcResp = Get-CAResponseObject -CAAnswers $tmcAns -CACommonName 'CONTOSO-VPN' -CASanitizedName 'CONTOSO-VPN' -PeerSubjectFilter ''
 Assert-True -Condition $tmcResp.PeerPlan.Applicable -Because "the response object carries the computed peer plan"
-Assert-Equal -Actual (@($tmcResp.PeerPlan.Peers | ForEach-Object PeerName) -join ',') -Expected 'P_IKEv2_DIv2_CLIENTA,P_IKEv2_DIv2_Audit,P_IKEv2_DIv2_RedStone' -Because "the hand-back carries every qualifying pair's peer, in order, for CLIBuilder to render"
+Assert-Equal -Actual (@($tmcResp.PeerPlan.Peers | ForEach-Object PeerName) -join ',') -Expected 'P_IKEv2_DIv2_CONTOSO,P_IKEv2_DIv2_Audit,P_IKEv2_DIv2_Warehouse' -Because "the hand-back carries every qualifying pair's peer, in order, for CLIBuilder to render"
 
 
 

@@ -62,7 +62,7 @@ function New-CATestCertSuite {
 
     # --- template(s): numbered pick-list of published "Manual approval" templates -----------------
     # 2026-09-15, per the maintainer: used to be one free-typed name (always the single shared
-    # IKEv2VPN-CorpLAN-MANUAL) - now that per-group manual templates exist (one per RadiusGroupPair,
+    # IKEv2VPN-InternalUsers-MANUAL) - now that per-group manual templates exist (one per RadiusGroupPair,
     # Get-CAPerGroupManualTemplateSpec), show what's actually published and let the tech pick.
     $manualTemplates = @(Get-CAManualApprovalTemplates)
     if (-not $manualTemplates.Count) {
@@ -122,7 +122,7 @@ function New-CATestCertSuite {
     foreach ($tmpl in $pickedTemplates) {
         Write-Host ""
         Write-Host ("--- $($tmpl.DisplayName) ---") -ForegroundColor White
-        # 2026-09-15, live bug at a client + the maintainer's own follow-up: "if it finds 0, return and have the
+        # 2026-09-15, bug found in the field + the maintainer's own follow-up: "if it finds 0, return and have the
         # tech re-do the search" - a 0-match search must NOT be treated the same as the tech
         # deliberately blanking out to skip this template. -ReturnNullOnNoMatch makes
         # Find-VPNCertADUser hand back $null (instead of looping with its own generic reprompt)

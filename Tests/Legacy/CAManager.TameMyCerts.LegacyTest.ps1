@@ -27,7 +27,7 @@ Test-ScriptParses -Path $Dashboard -Because "CA-Manager.ps1 parses after wiring 
 # ---------------------------------------------------------------------------
 # 1. ConvertTo-CATameMyCertsToken - the DN/FortiOS-safe sanitiser
 # ---------------------------------------------------------------------------
-Assert-Equal -Actual (ConvertTo-CATameMyCertsToken 'IKEv2_PSGI_Users') -Expected 'IKEv2_PSGI_Users' -Because "already-safe name is unchanged"
+Assert-Equal -Actual (ConvertTo-CATameMyCertsToken 'IKEv2_SALES_Users') -Expected 'IKEv2_SALES_Users' -Because "already-safe name is unchanged"
 Assert-Equal -Actual (ConvertTo-CATameMyCertsToken "O'Brien Contractors") -Expected 'OBrienContractors' -Because "apostrophe + spaces stripped"
 Assert-Equal -Actual (ConvertTo-CATameMyCertsToken 'Cote & R&D') -Expected 'CoteRD' -Because "ampersand + spaces stripped"
 Assert-Equal -Actual (ConvertTo-CATameMyCertsToken '.foo.') -Expected 'foo' -Because "leading/trailing separators trimmed"
@@ -39,7 +39,7 @@ Assert-Match -Actual (ConvertTo-CATameMyCertsToken 'Weird %*() Name!') -Pattern 
 # ---------------------------------------------------------------------------
 # 2. Get-CATameMyCertsPolicyXml - inbound Subject/SAN allow-list + the outbound OU= rewrite
 #
-#    2026-09-15, real live bug at CLIENTA: every per-group MANUAL template was denied with
+#    2026-09-15, bug found in the field at CONTOSO: every per-group MANUAL template was denied with
 #    CERT_E_INVALID_NAME the instant a policy file matched it - TameMyCerts's own Application-log
 #    entry named the cause verbatim: "The emailAddress/commonName/organizationalUnitName/
 #    domainComponent/dNSName field is not allowed." TameMyCerts is deny-by-default on every RDN/SAN
@@ -47,21 +47,21 @@ Assert-Match -Actual (ConvertTo-CATameMyCertsToken 'Weird %*() Name!') -Pattern 
 #    session's prior assumption ("no <Subject> section => no inbound validation at all") was wrong.
 #    That part of the fix (the allow-list) is confirmed live-correct. A same-day SECOND live test
 #    disproved a follow-on change tried from GitHub's <Overwrite> example at the "1.8.1871.683" tag -
-#    CLIENTA's actual installed module rejected it outright ("Unknown XML element Overwrite"), so
+#    CONTOSO's actual installed module rejected it outright ("Unknown XML element Overwrite"), so
 #    whatever's really running there doesn't match what's committed under that tag name upstream.
 #    Reverted to <Force>, which never once threw an unknown-element error across this entire session
 #    and is confirmed live-correct for the Auto per-group templates
-#    (project_clienta_ikev2_corplan_peer_debug.md) - see Get-CATameMyCertsPolicyXml's own .DESCRIPTION.
+#    (project_contoso_ikev2_internalusers_peer_debug.md) - see Get-CATameMyCertsPolicyXml's own .DESCRIPTION.
 # ---------------------------------------------------------------------------
-$xml = Get-CATameMyCertsPolicyXml -OuValue 'PSGI'
+$xml = Get-CATameMyCertsPolicyXml -OuValue 'SALES'
 $null = [xml]$xml   # throws if not well-formed
 Assert-Contains -Haystack $xml -Needle '<Field>organizationalUnitName</Field>' -Because "stamps the OU RDN"
-Assert-Contains -Haystack $xml -Needle '<Value>PSGI</Value>' -Because "with the configured token"
-Assert-Contains -Haystack $xml -Needle '<Force>true</Force>' -Because "Force=true (NOT <Overwrite> - tried live at CLIENTA, the real installed module rejected it as an unknown element) => exactly one OU regardless of what subject the CA/tech already supplied (renewal idempotency)"
-Assert-NoMatch  -Actual $xml -Pattern '<Overwrite>' -Because "the element that CLIENTA's real installed module actually rejected must not reappear"
+Assert-Contains -Haystack $xml -Needle '<Value>SALES</Value>' -Because "with the configured token"
+Assert-Contains -Haystack $xml -Needle '<Force>true</Force>' -Because "Force=true (NOT <Overwrite> - tried live at CONTOSO, the real installed module rejected it as an unknown element) => exactly one OU regardless of what subject the CA/tech already supplied (renewal idempotency)"
+Assert-NoMatch  -Actual $xml -Pattern '<Overwrite>' -Because "the element that CONTOSO's real installed module actually rejected must not reappear"
 Assert-Contains -Haystack $xml -Needle '<OutboundSubject>' -Because "outbound rewrite section present"
 foreach ($f in @('commonName', 'organizationalUnitName', 'domainComponent', 'emailAddress')) {
-    Assert-Match -Actual $xml -Pattern "(?s)<Subject>.*<Field>$f</Field>.*</Subject>" -Because "the <Subject> allow-list explicitly permits '$f' - TameMyCerts denies every field a request actually carries unless it's listed here, confirmed live (CLIENTA request 185's own TameMyCerts log line named exactly these four DN fields as 'not allowed')"
+    Assert-Match -Actual $xml -Pattern "(?s)<Subject>.*<Field>$f</Field>.*</Subject>" -Because "the <Subject> allow-list explicitly permits '$f' - TameMyCerts denies every field a request actually carries unless it's listed here, confirmed live (CONTOSO request 185's own TameMyCerts log line named exactly these four DN fields as 'not allowed')"
 }
 Assert-Match -Actual $xml -Pattern "(?s)<SubjectAlternativeName>.*<Field>dNSName</Field>.*</SubjectAlternativeName>" -Because "dNSName is allow-listed in <SubjectAlternativeName> (a DIFFERENT section than <Subject> - TameMyCerts's own maintainer: SAN fields and Subject DN fields are validated in different places) - New-VPNCertRequest's DnsName param puts both mail and the user's DN into dNSName-type SAN entries, and TameMyCerts's log named 'dNSName' as denied too"
 $subjIdx = $xml.IndexOf('<Subject>')
@@ -74,11 +74,11 @@ Assert-True -Condition ($subjIdx -ge 0 -and $subjIdx -lt $sanIdx -and $sanIdx -l
 # ---------------------------------------------------------------------------
 $answers = [pscustomobject]@{
     CA_SubjectStampMode = 'TameMyCerts'
-    CA_TemplateAuto     = 'IKEv2VPN-CorpLAN'
+    CA_TemplateAuto     = 'IKEv2VPN-InternalUsers'
     CA_AutoEnrollGroup  = 'IKEv2_MasterGroup'
     RadiusGroupPairs    = @(
-        [pscustomobject]@{ Label = 'PSGI';  UserGroupName = 'IKEv2_PSGI_Users' }
-        [pscustomobject]@{ Label = 'PRDP';  UserGroupName = 'IKEv2_PlantDT_RDP_1' }
+        [pscustomobject]@{ Label = 'SALES';  UserGroupName = 'IKEv2_SALES_Users' }
+        [pscustomobject]@{ Label = 'PLANT';  UserGroupName = 'IKEv2_PlantApp_RDP_1' }
         [pscustomobject]@{ Label = 'Audit'; UserGroupName = 'IKEv2_Audit_Users'; CertSubjectOu = 'AUD' }
         # real CONTOSO shape (2026-09-10 live bug): UserGroupName is a friendlier label, NOT reliably a
         # real AD group - UserGroupValue is the actual AD security group. Both populated here.
@@ -98,13 +98,13 @@ $contosoAuto = @($plan.TemplatePolicies | Where-Object { $_.GroupLabel -eq 'CONT
 Assert-Equal -Actual $contosoAuto.UserGroupName -Expected 'IKEv2_InternalUsers' -Because "UserGroupVALUE wins over UserGroupName - it's the real AD group (live bug 2026-09-10: 'IKEv2_UserGroup' doesn't resolve to a SID, 'IKEv2_InternalUsers' does)"
 Assert-Equal -Actual $contosoAuto.OuValue -Expected 'IKEv2_InternalUsers' -Because "and the OU stamp reflects the same real group, not the friendlier label"
 
-$psgi = @($plan.TemplatePolicies | Where-Object { $_.GroupLabel -eq 'PSGI' -and $_.TemplateDisplayName -notlike '*-MANUAL' })[0]
-Assert-Equal -Actual $psgi.TemplateDisplayName -Expected 'NSP-IKEv2-PSGI' -Because "DisplayName = <prefix><sanitised label>"
-Assert-Equal -Actual $psgi.TemplateCn -Expected 'NSPIKEv2PSGI' -Because "CN = the display name with non-alphanumerics stripped (matches New-CAVpnTemplate)"
-Assert-Equal -Actual $psgi.OuValue -Expected 'IKEv2_PSGI_Users' -Because "OU token defaults to the sanitised UserGroupName"
-Assert-Equal -Actual $psgi.FileName -Expected 'NSPIKEv2PSGI.xml' -Because "policy file is named after the template CN"
-Assert-Contains -Haystack $psgi.Xml -Needle '<Value>IKEv2_PSGI_Users</Value>' -Because "the XML carries that token"
-Assert-Contains -Haystack "$($psgi.FilePath)" -Needle 'C:\PolicyFiles\NSPIKEv2PSGI.xml' -Because "default policy directory"
+$sales = @($plan.TemplatePolicies | Where-Object { $_.GroupLabel -eq 'SALES' -and $_.TemplateDisplayName -notlike '*-MANUAL' })[0]
+Assert-Equal -Actual $sales.TemplateDisplayName -Expected 'NSP-IKEv2-SALES' -Because "DisplayName = <prefix><sanitised label>"
+Assert-Equal -Actual $sales.TemplateCn -Expected 'NSPIKEv2SALES' -Because "CN = the display name with non-alphanumerics stripped (matches New-CAVpnTemplate)"
+Assert-Equal -Actual $sales.OuValue -Expected 'IKEv2_SALES_Users' -Because "OU token defaults to the sanitised UserGroupName"
+Assert-Equal -Actual $sales.FileName -Expected 'NSPIKEv2SALES.xml' -Because "policy file is named after the template CN"
+Assert-Contains -Haystack $sales.Xml -Needle '<Value>IKEv2_SALES_Users</Value>' -Because "the XML carries that token"
+Assert-Contains -Haystack "$($sales.FilePath)" -Needle 'C:\PolicyFiles\NSPIKEv2SALES.xml' -Because "default policy directory"
 
 $aud = @($plan.TemplatePolicies | Where-Object { $_.GroupLabel -eq 'Audit' -and $_.TemplateDisplayName -notlike '*-MANUAL' })[0]
 Assert-Equal -Actual $aud.OuValue -Expected 'AUD' -Because "per-pair CertSubjectOu overrides the derived token"
@@ -113,20 +113,20 @@ Assert-Equal -Actual $aud.OuValue -Expected 'AUD' -Because "per-pair CertSubject
 # 3a. 2026-09-15 - the manual counterpart's own policy entry: SAME OU, distinct CN/FileName, matching
 #     Get-CAPerGroupManualTemplateSpec's own DisplayName convention exactly (CATemplates.ps1)
 # ---------------------------------------------------------------------------
-$psgiManual = @($plan.TemplatePolicies | Where-Object { $_.GroupLabel -eq 'PSGI' -and $_.TemplateDisplayName -like '*-MANUAL' })[0]
+$psgiManual = @($plan.TemplatePolicies | Where-Object { $_.GroupLabel -eq 'SALES' -and $_.TemplateDisplayName -like '*-MANUAL' })[0]
 Assert-True  -Condition ([bool]$psgiManual) -Because "a manual-counterpart policy entry exists for every RADIUS group pair, not just the Auto template"
-Assert-Equal -Actual $psgiManual.TemplateDisplayName -Expected 'NSP-IKEv2-PSGI-MANUAL' -Because "matches Get-CAPerGroupManualTemplateSpec's own '<Auto DisplayName>-MANUAL' convention exactly - the policy file MUST be named after the real template's real CN"
-Assert-Equal -Actual $psgiManual.TemplateCn -Expected 'NSPIKEv2PSGIMANUAL' -Because "CN = the manual display name with non-alphanumerics stripped, same convention as every other template CN in this codebase"
-Assert-Equal -Actual $psgiManual.FileName -Expected 'NSPIKEv2PSGIMANUAL.xml' -Because "policy file named after the manual template's own CN, distinct from the Auto template's file"
-Assert-Equal -Actual $psgiManual.OuValue -Expected $psgi.OuValue -Because "stamps the IDENTICAL OU as its Auto counterpart - same group, same flow, just admin-approved instead of auto-enrolled"
-Assert-Contains -Haystack $psgiManual.Xml -Needle '<Value>IKEv2_PSGI_Users</Value>' -Because "the manual policy's own XML carries the same OU token"
+Assert-Equal -Actual $psgiManual.TemplateDisplayName -Expected 'NSP-IKEv2-SALES-MANUAL' -Because "matches Get-CAPerGroupManualTemplateSpec's own '<Auto DisplayName>-MANUAL' convention exactly - the policy file MUST be named after the real template's real CN"
+Assert-Equal -Actual $psgiManual.TemplateCn -Expected 'NSPIKEv2SALESMANUAL' -Because "CN = the manual display name with non-alphanumerics stripped, same convention as every other template CN in this codebase"
+Assert-Equal -Actual $psgiManual.FileName -Expected 'NSPIKEv2SALESMANUAL.xml' -Because "policy file named after the manual template's own CN, distinct from the Auto template's file"
+Assert-Equal -Actual $psgiManual.OuValue -Expected $sales.OuValue -Because "stamps the IDENTICAL OU as its Auto counterpart - same group, same flow, just admin-approved instead of auto-enrolled"
+Assert-Contains -Haystack $psgiManual.Xml -Needle '<Value>IKEv2_SALES_Users</Value>' -Because "the manual policy's own XML carries the same OU token"
 
 # custom directory + prefix
 $plan2 = Get-CATameMyCertsPlan -CAAnswers $answers -PolicyDirectory 'D:\CAPol' -TemplatePrefix 'ACME-'
-$p2 = @($plan2.TemplatePolicies | Where-Object { $_.GroupLabel -eq 'PSGI' -and $_.TemplateDisplayName -notlike '*-MANUAL' })[0]
-Assert-Equal -Actual $p2.TemplateDisplayName -Expected 'ACME-PSGI' -Because "-TemplatePrefix honoured"
-Assert-Equal -Actual $p2.TemplateCn -Expected 'ACMEPSGI' -Because "CN strips the prefix hyphen"
-Assert-Contains -Haystack "$($p2.FilePath)" -Needle 'D:\CAPol\ACMEPSGI.xml' -Because "-PolicyDirectory honoured"
+$p2 = @($plan2.TemplatePolicies | Where-Object { $_.GroupLabel -eq 'SALES' -and $_.TemplateDisplayName -notlike '*-MANUAL' })[0]
+Assert-Equal -Actual $p2.TemplateDisplayName -Expected 'ACME-SALES' -Because "-TemplatePrefix honoured"
+Assert-Equal -Actual $p2.TemplateCn -Expected 'ACMESALES' -Because "CN strips the prefix hyphen"
+Assert-Contains -Haystack "$($p2.FilePath)" -Needle 'D:\CAPol\ACMESALES.xml' -Because "-PolicyDirectory honoured"
 
 # gate: absent CA_SubjectStampMode
 $plan3 = Get-CATameMyCertsPlan -CAAnswers ([pscustomobject]@{ RadiusGroupPairs = @() })

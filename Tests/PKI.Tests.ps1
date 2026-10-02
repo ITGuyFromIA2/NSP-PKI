@@ -5,7 +5,12 @@
 
 BeforeAll {
     $toolkits = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-    Import-Module (Join-Path (Split-Path -Parent $toolkits) 'NSP-Bootstrap\NSP.Bootstrap.psd1') -Force -Global -ErrorAction Stop
+    # NSP-Bootstrap sits next to the other checkouts, or one level up (C:\GitRepo\NSP-Bootstrap beside
+    # C:\GitRepo\NSP-PoSHToolkits); NSP_ECOSYSTEM_ROOT names another folder that holds the NSP-* checkouts.
+    $bootstrap = @($env:NSP_ECOSYSTEM_ROOT, $toolkits, (Split-Path -Parent $toolkits)) | Where-Object { $_ } |
+        ForEach-Object { Join-Path $_ 'NSP-Bootstrap\NSP.Bootstrap.psd1' } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    if (-not $bootstrap) { throw 'NSP-Bootstrap checkout not found next to this repository (or set NSP_ECOSYSTEM_ROOT).' }
+    Import-Module $bootstrap -Force -Global -ErrorAction Stop
     foreach ($m in 'NSP-Console\NSP.Console.psd1', 'NSP-Toolkit\NSP.Toolkit.psd1', 'NSP-ClientScripts\NSP.ClientScripts.psd1') {
         Import-Module (Join-Path $toolkits $m) -Force -Global -ErrorAction Stop
     }

@@ -230,7 +230,7 @@ function Get-CAStatus {
         [string]$CAConfigName,
         # Template display names this deployment is expected to carry (from CAAnswers.json when
         # available). Defaults to the standard IKEv2-VPN set (2026-09-15: "InternalUsers", not an
-        # earlier client-specific "CorpLAN"); some clients also add their own OCSP response-signing template.
+        # earlier client-specific "InternalUsers"); some clients also add their own OCSP response-signing template.
         [string[]]$ExpectedTemplates = @('IKEv2VPN-InternalUsers', 'IKEv2VPN-InternalUsers-MANUAL', 'FortiGate')
     )
 
@@ -332,7 +332,7 @@ function Get-CAStatus {
     $names = @()
     if ($catmpl) {
         foreach ($line in ($catmpl -split "`r?`n")) {
-            # e.g. "IKEv2VPN-CorpLAN: IKEv2 VPN - Corp LAN -- Auto-Enroll: Access is denied."
+            # e.g. "IKEv2VPN-InternalUsers: IKEv2 VPN - Corp LAN -- Auto-Enroll: Access is denied."
             # The trailing "Access is denied." is a NORMAL per-template annotation (the running user
             # just can't auto-enroll that one) - it is NOT a command failure.
             if ($line -match '^\s*([A-Za-z0-9][A-Za-z0-9 ._-]*):\s.*--') { $names += $Matches[1].Trim() }
@@ -351,7 +351,7 @@ function Get-CAStatus {
         $s.PublishedTemplateCount = $names.Count
     }
     # `certutil -CATemplates` reports the template CN (first token). Menu 4 builds each CN by
-    # stripping non-alphanumerics from the display name (IKEv2VPN-CorpLAN -> IKEv2VPNCorpLAN), so an
+    # stripping non-alphanumerics from the display name (IKEv2VPN-InternalUsers -> IKEv2VPNInternalUsers), so an
     # expected DISPLAY name won't literally equal a reported CN. Match on the stripped form too.
     $normPub = @($names | ForEach-Object { ($_ -replace '[^A-Za-z0-9]', '') })
     $s.ExpectedTemplateStatus = foreach ($t in $ExpectedTemplates) {

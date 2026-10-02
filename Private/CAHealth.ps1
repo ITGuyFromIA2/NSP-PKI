@@ -214,7 +214,7 @@ function Invoke-CAMenuHealth {
     $remoteClient = Read-Host "  VPN client hostname to verify has a real issued cert (optional, Enter to skip)"
     $remoteTemplateCn = $null
     if (-not [string]::IsNullOrWhiteSpace($remoteClient)) {
-        $defaultCn = if (-not [string]::IsNullOrWhiteSpace($CAAnswers.CA_TemplateAuto)) { ($CAAnswers.CA_TemplateAuto -replace '[^A-Za-z0-9]', '') } else { 'IKEv2VPNCorpLAN' }
+        $defaultCn = if (-not [string]::IsNullOrWhiteSpace($CAAnswers.CA_TemplateAuto)) { ($CAAnswers.CA_TemplateAuto -replace '[^A-Za-z0-9]', '') } else { 'IKEv2VPNInternalUsers' }
         $remoteTemplateCn = Read-Host "  Template CN to check for on that client [$defaultCn]"
         if ([string]::IsNullOrWhiteSpace($remoteTemplateCn)) { $remoteTemplateCn = $defaultCn }
     }

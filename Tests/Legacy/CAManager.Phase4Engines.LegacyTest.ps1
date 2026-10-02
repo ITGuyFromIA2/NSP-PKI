@@ -10,7 +10,7 @@
     2026-09-12: Get-CAAutoEnrollGpoPlan (and the rest of CAAutoEnrollGPO.ps1) MOVED to the new
     AD-Manager tool - its own test coverage now lives in Tests\ADManager.*.Tests.ps1, not here.
 
-    The captured-data functions transcribe CLIENTA's live CA (Examples_Sources\CLIENTA\CAInventory\) -
+    The captured-data functions transcribe CONTOSO's live CA (Examples_Sources\CONTOSO\CAInventory\) -
     these assertions are the guard that the transcription stays faithful.
 
     Repo convention (Tests\README.md) - NOT Pester. Whole modules are dot-sourced here (they have no
@@ -63,13 +63,13 @@ Assert-Match -Actual $rc.Error -Pattern 'kaboom' -Because "-ContinueOnError swal
 Set-CADryRun -Enabled $true
 
 # ---------------------------------------------------------------------------
-# 2. ConvertTo-CAPkiPeriodBytes - round-trips to the CLIENTA raw-tick values
+# 2. ConvertTo-CAPkiPeriodBytes - round-trips to the CONTOSO raw-tick values
 # ---------------------------------------------------------------------------
 foreach ($case in @(@{ d = 365; t = -315360000000000 }, @{ d = 42; t = -36288000000000 },
                     @{ d = 14; t = -12096000000000 }, @{ d = 2; t = -1728000000000 })) {
     $b = ConvertTo-CAPkiPeriodBytes -Days $case.d
     Assert-Equal -Actual $b.Length -Expected 8 -Because "$($case.d)d -> an 8-byte value"
-    Assert-Equal -Actual ([System.BitConverter]::ToInt64($b, 0)) -Expected $case.t -Because "$($case.d)d round-trips to $($case.t) (matches the CLIENTA inventory raw ticks)"
+    Assert-Equal -Actual ([System.BitConverter]::ToInt64($b, 0)) -Expected $case.t -Because "$($case.d)d round-trips to $($case.t) (matches the CONTOSO inventory raw ticks)"
 }
 
 # ---------------------------------------------------------------------------
@@ -78,12 +78,12 @@ foreach ($case in @(@{ d = 365; t = -315360000000000 }, @{ d = 42; t = -36288000
 $spec = Get-CAVpnTemplateSpec
 Assert-Equal -Actual $spec.Count -Expected 4 -Because "four templates"
 $auto = $spec | Where-Object Key -eq 'Auto'
-Assert-Equal -Actual $auto.SchemaVersion -Expected 2 -Because "Auto template is schema v2 (matches CLIENTA's live IKEv2VPN-CorpLAN)"
+Assert-Equal -Actual $auto.SchemaVersion -Expected 2 -Because "Auto template is schema v2 (matches CONTOSO's live IKEv2VPN-InternalUsers)"
 Assert-True  -Condition (@($auto.DefaultCsps).Count -eq 0) -Because "DefaultCsps is empty by default - a v2 template pinned to a CNG KSP only fails enrollment with CRYPT_E_NO_PROVIDER"
 Assert-Equal -Actual ($auto.EkuOids -join ',') -Expected '1.3.6.1.5.5.7.3.2' -Because "Auto template EKU = Client Authentication"
 Assert-Equal -Actual $auto.CertificateNameFlagHex -Expected '0x82000000' -Because "Auto template default (shared-CA model) = DIRECTORY_PATH subject + UPN SAN, so 'OU=<vpn ou>' lands in the subject for the FortiGate peer filter"
 $autoDed = (Get-CAVpnTemplateSpec -IssuingModel 'DedicatedIssuingCA') | Where-Object Key -eq 'Auto'
-Assert-Equal -Actual $autoDed.CertificateNameFlagHex -Expected '0xA6000000' -Because "DedicatedIssuingCA keeps the CLIENTA-verbatim name-flag - no subject filter needed"
+Assert-Equal -Actual $autoDed.CertificateNameFlagHex -Expected '0xA6000000' -Because "DedicatedIssuingCA keeps the CONTOSO-verbatim name-flag - no subject filter needed"
 $autoShared = (Get-CAVpnTemplateSpec -IssuingModel 'SharedCAWithSubjectFilter') | Where-Object Key -eq 'Auto'
 Assert-Equal -Actual $autoShared.CertificateNameFlagHex -Expected '0x82000000' -Because "SharedCAWithSubjectFilter forces the DIRECTORY_PATH subject"
 $autoFromAns = (Get-CATemplateSpecForAnswers ([pscustomobject]@{ CA_IssuingModel = 'DedicatedIssuingCA' })) | Where-Object Key -eq 'Auto'
@@ -94,11 +94,11 @@ Assert-Contains -Haystack ($auto.AutoEnrollPrincipals -join ',') -Needle 'Umbrel
 $manual = $spec | Where-Object Key -eq 'Manual'
 Assert-Equal -Actual $manual.CertificateNameFlagHex -Expected '0x00000001' -Because "Manual template = ENROLLEE_SUPPLIES_SUBJECT (captured)"
 Assert-Equal -Actual $manual.EnrollmentFlagHex -Expected '0x0000000B' -Because "Manual template pends all requests (0x2, captured)"
-Assert-Equal -Actual $manual.PrivateKeyFlagHex -Expected '0x01010010' -Because "Manual template private key is EXPORTABLE (0x10, captured verbatim from CLIENTA)"
+Assert-Equal -Actual $manual.PrivateKeyFlagHex -Expected '0x01010010' -Because "Manual template private key is EXPORTABLE (0x10, captured verbatim from CONTOSO)"
 Assert-True  -Condition ($manual.AutoEnrollPrincipals.Count -eq 0) -Because "the Manual template is not auto-enrolled"
 
 $fg = $spec | Where-Object Key -eq 'FortiGate'
-Assert-Equal -Actual $fg.SchemaVersion -Expected 2 -Because "FortiGate template stays v2 (CLIENTA's is v4; v2 is equivalent for a CSR-supplied key and stays raw-ADSI-authorable)"
+Assert-Equal -Actual $fg.SchemaVersion -Expected 2 -Because "FortiGate template stays v2 (CONTOSO's is v4; v2 is equivalent for a CSR-supplied key and stays raw-ADSI-authorable)"
 $ocspSpec = $spec | Where-Object Key -eq 'OcspSigning'
 Assert-Equal -Actual $ocspSpec.SchemaVersion -Expected 3 -Because "OCSP signing template MUST be schema v3 - the Online Responder wizard rejects v2/bare-v3 with 0x80070490"
 Assert-Equal -Actual $auto.SchemaVersion -Expected 2 -Because "the user templates stay v2 (only the OCSP signer needs v3)"
@@ -113,7 +113,7 @@ Assert-True  -Condition ($null -eq $auto.RaApplicationPoliciesRaw) -Because "the
 $tmcAns = [pscustomobject]@{
     CA_SubjectStampMode = 'TameMyCerts'
     RadiusGroupPairs = @(
-        [pscustomobject]@{ Label = 'PSGI';  UserGroupName = 'IKEv2_PSGI_Users' }
+        [pscustomobject]@{ Label = 'SALES';  UserGroupName = 'IKEv2_SALES_Users' }
         [pscustomobject]@{ Label = 'Audit'; UserGroupName = 'IKEv2_Audit_Users' }
         # real CONTOSO shape (2026-09-10 live bug): UserGroupName is a friendlier label, NOT reliably a
         # real AD group - Grant-CATemplateEnrollment failed to resolve it to a SID; UserGroupValue is
@@ -123,9 +123,9 @@ $tmcAns = [pscustomobject]@{
 }
 $pg = @(Get-CAPerGroupTemplateSpecs -CAAnswers $tmcAns)
 Assert-Equal -Actual $pg.Count -Expected 3 -Because "one per-group Auto spec per RadiusGroupPairs entry"
-$pgPsgi = $pg | Where-Object { $_.Key -eq 'Group_PSGI' }
-Assert-Equal -Actual $pgPsgi.DisplayName -Expected 'NSP-IKEv2-PSGI' -Because "DisplayName = <prefix><label>"
-Assert-Equal -Actual $pgPsgi.GroupName -Expected 'IKEv2_PSGI_Users' -Because "GroupName falls back to UserGroupName when UserGroupValue is absent"
+$pgPsgi = $pg | Where-Object { $_.Key -eq 'Group_SALES' }
+Assert-Equal -Actual $pgPsgi.DisplayName -Expected 'NSP-IKEv2-SALES' -Because "DisplayName = <prefix><label>"
+Assert-Equal -Actual $pgPsgi.GroupName -Expected 'IKEv2_SALES_Users' -Because "GroupName falls back to UserGroupName when UserGroupValue is absent"
 $pgContoso = $pg | Where-Object { $_.Key -eq 'Group_CONTOSO' }
 Assert-Equal -Actual $pgContoso.GroupName -Expected 'IKEv2_InternalUsers' -Because "GroupName prefers UserGroupValue (the real AD group) over UserGroupName when both are present"
 Assert-Equal -Actual $pgPsgi.CertificateNameFlagHex -Expected '0x42000000' -Because "per-group templates are CN-only + UPN SAN (TameMyCerts adds the OU) - real AD OU path never leaks"
@@ -139,11 +139,11 @@ Assert-Equal -Actual (@(Get-CAPerGroupTemplateSpecs -CAAnswers ([pscustomobject]
 
 $swapped = @(Get-CATemplateSpecForAnswers -CAAnswers $tmcAns)
 Assert-True  -Condition (-not ($swapped | Where-Object { $_.Key -eq 'Auto' })) -Because "TameMyCerts mode drops the single shared Auto template"
-Assert-True  -Condition ([bool]($swapped | Where-Object { $_.Key -eq 'Group_PSGI' })) -Because "and adds the per-group ones instead"
-# 2026-09-15, per the maintainer (live, looking at CLIENTA's own menu 4 pick-list): "can we drop the 'manual'
+Assert-True  -Condition ([bool]($swapped | Where-Object { $_.Key -eq 'Group_SALES' })) -Because "and adds the per-group ones instead"
+# 2026-09-15, per the maintainer (live, looking at CONTOSO's own menu 4 pick-list): "can we drop the 'manual'
 # one from CLIBuilder?... since we're autocreating manual ones anyway" - the shared Manual template
 # is now ALSO dropped in TameMyCerts mode, same reasoning as Auto - every per-group Auto template
-# already gets its own -MANUAL counterpart on request (Group_PSGI_Manual etc.), so the extra
+# already gets its own -MANUAL counterpart on request (Group_SALES_Manual etc.), so the extra
 # non-scoped shared Manual template was pure noise on the pick-list, not a real added capability.
 Assert-True  -Condition (-not ($swapped | Where-Object { $_.Key -eq 'Manual' })) -Because "TameMyCerts mode now drops the shared Manual template too - redundant once per-group manual counterparts exist"
 Assert-True  -Condition ([bool]($swapped | Where-Object { $_.Key -eq 'FortiGate' }))    -Because "FortiGate is unaffected - it isn't a per-group-anything concept"
@@ -163,8 +163,8 @@ Assert-NoMatch -Actual $srcPg -Pattern 'Invoke-CAStep|New-Item|Set-ItemProperty|
 #     manual admin request against it"
 # ---------------------------------------------------------------------------
 $pgManualPsgi = Get-CAPerGroupManualTemplateSpec -GroupSpec $pgPsgi
-Assert-Equal -Actual $pgManualPsgi.DisplayName -Expected 'NSP-IKEv2-PSGI-MANUAL' -Because "the manual counterpart's DisplayName is the Auto template's own name, suffixed -MANUAL"
-Assert-Equal -Actual $pgManualPsgi.Key -Expected 'Group_PSGI_Manual' -Because "keyed off the Auto spec's own Key, distinctly"
+Assert-Equal -Actual $pgManualPsgi.DisplayName -Expected 'NSP-IKEv2-SALES-MANUAL' -Because "the manual counterpart's DisplayName is the Auto template's own name, suffixed -MANUAL"
+Assert-Equal -Actual $pgManualPsgi.Key -Expected 'Group_SALES_Manual' -Because "keyed off the Auto spec's own Key, distinctly"
 Assert-Equal -Actual $pgManualPsgi.GroupName -Expected $pgPsgi.GroupName -Because "carries the SAME group reference as its Auto counterpart - it exists to test/troubleshoot that specific group's cert shape"
 Assert-Equal -Actual $pgManualPsgi.SchemaVersion -Expected 2 -Because "stays schema v2, same as every other user/FortiGate template"
 Assert-Equal -Actual $pgManualPsgi.CertificateNameFlagHex -Expected '0x00000001' -Because "ENROLLEE_SUPPLIES_SUBJECT - same as the shared Manual template, NOT the per-group Auto's CN-only+TameMyCerts-OU shape"
@@ -175,7 +175,7 @@ Assert-Equal -Actual $pgManualPsgi.AutoEnrollPrincipals.Count -Expected 0 -Becau
 Assert-Equal -Actual $pgManualPsgi.EkuOids -Expected $pgPsgi.EkuOids -Because "same EKU (Client Authentication) as its Auto counterpart"
 
 $manualThrew = $false
-try { Get-CAPerGroupManualTemplateSpec -GroupSpec ([pscustomobject]@{ Key = 'Auto'; DisplayName = 'IKEv2VPN-CorpLAN' }) } catch { $manualThrew = $true }
+try { Get-CAPerGroupManualTemplateSpec -GroupSpec ([pscustomobject]@{ Key = 'Auto'; DisplayName = 'IKEv2VPN-InternalUsers' }) } catch { $manualThrew = $true }
 Assert-True -Condition $manualThrew -Because "throws loudly if handed something that isn't a per-group spec (Key not like 'Group_*') - never silently builds a nonsensical manual template off the SHARED Auto spec"
 
 $srcPgManual = (Get-Command Get-CAPerGroupManualTemplateSpec).Definition
@@ -201,7 +201,7 @@ $named = Get-CAVpnTemplateSpec -AutoName 'FOO-Auto' -ManualName 'FOO-Manual' -Fo
 Assert-Equal -Actual ($named | Where-Object Key -eq 'Auto').DisplayName -Expected 'FOO-Auto' -Because "display names are parameterized (client prefix at create time)"
 
 # --- template attribute encoders (pure, deterministic) ---
-Assert-Equal -Actual ([System.BitConverter]::ToString((ConvertFrom-CAKeyUsageHex '0xA000'))) -Expected 'A0-00' -Because "pKIKeyUsage 0xA000 -> bytes A0 00 (digitalSignature + keyEncipherment, matches CLIENTA)"
+Assert-Equal -Actual ([System.BitConverter]::ToString((ConvertFrom-CAKeyUsageHex '0xA000'))) -Expected 'A0-00' -Because "pKIKeyUsage 0xA000 -> bytes A0 00 (digitalSignature + keyEncipherment, matches CONTOSO)"
 Assert-Equal -Actual ([System.BitConverter]::ToString((ConvertFrom-CAKeyUsageHex '0x8000'))) -Expected '80-00' -Because "pKIKeyUsage 0x8000 -> bytes 80 00 (digitalSignature only, the OCSP signer)"
 Assert-Equal -Actual (ConvertFrom-CAHexToInt32 '0xA6000000') -Expected -1509949440 -Because "0xA6000000 name-flag stores as its two's-complement int32 (high bit set)"
 Assert-Equal -Actual (ConvertFrom-CAHexToInt32 '0x00000029') -Expected 41 -Because "0x29 enrollment-flag -> 41"
@@ -287,13 +287,13 @@ Assert-Match -Actual $srcManualTpl -Pattern '-band 0x2\b' -Because "filters on C
 Assert-Match -Actual $srcManualTpl -Pattern '(?s)try\s*\{.*catch' -Because "an unreadable/unresolvable single template (built-in stored elsewhere, transient AD hiccup) is skipped, not fatal to the whole listing"
 
 # ---------------------------------------------------------------------------
-# 4. Get-CAPublicationUrlPlan - the CLIENTA CDP/AIA recipe
+# 4. Get-CAPublicationUrlPlan - the CONTOSO CDP/AIA recipe
 # ---------------------------------------------------------------------------
 $p = Get-CAPublicationUrlPlan -CrlFqdn 'crl-acme.msappproxy.net' -OcspFqdn 'ocsp-acme.msappproxy.net' -DeltaCrl $true -CrlSharePath 'C:\CRLShare'
 Assert-Contains -Haystack ($p.Cdp -join ' | ') -Needle '6:http://crl-acme.msappproxy.net/CertEnroll/%3%8%9.crl' -Because "external CDP entry with flags 6 (AddToCertCDP + AddToFreshestCRL)"
 Assert-Contains -Haystack ($p.Cdp -join ' | ') -Needle '65:%windir%\system32\CertSrv\CertEnroll\%3%8%9.crl' -Because "local publish + delta (flags 65) when DeltaCrl"
 Assert-Contains -Haystack ($p.Cdp -join ' | ') -Needle '65:file://C:/CRLShare/%3%8%9.crl' -Because "a CRL-share publish target is added when CrlSharePath is given"
-Assert-Contains -Haystack ($p.Aia -join ' | ') -Needle '2:http://crl-acme.msappproxy.net/CertEnroll/%1_%3%4.crt' -Because "external AIA (CA-cert) entry with flag 2 - filename MUST match the local-publish entry's %1_%3%4.crt (bare %3.crt 404s: the CA never writes a file under that name - live bug found 2026-09-10 on Contoso-CA, traced to a mismatch faithfully transcribed from CLIENTA's own live capture)"
+Assert-Contains -Haystack ($p.Aia -join ' | ') -Needle '2:http://crl-acme.msappproxy.net/CertEnroll/%1_%3%4.crt' -Because "external AIA (CA-cert) entry with flag 2 - filename MUST match the local-publish entry's %1_%3%4.crt (bare %3.crt 404s: the CA never writes a file under that name - live bug found 2026-09-10 on Contoso-CA, traced to a mismatch faithfully transcribed from CONTOSO's own live capture)"
 Assert-Contains -Haystack ($p.Aia -join ' | ') -Needle '32:http://ocsp-acme.msappproxy.net/ocsp' -Because "external OCSP URL in the AIA extension with flag 32"
 Assert-Contains -Haystack ($p.Aia -join ' | ') -Needle '1:ldap:///CN=%7,CN=AIA' -Because "LDAP AIA publish is kept"
 $aiaLocal = @($p.Aia | Where-Object { $_ -match '^\d+:%windir%' })[0]

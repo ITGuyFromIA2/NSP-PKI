@@ -4,7 +4,7 @@
 .SYNOPSIS
     Tests for CA Manager - menu 9 (2026-09-10 renumber - was menu 4; Online Responder / OCSP): the
     PURE Get-CAOcspPlan (registry shape
-    transcribed from CLIENTA's live responder), and source-introspection that the engines route
+    transcribed from CONTOSO's live responder), and source-introspection that the engines route
     through Invoke-CAStep, use direct registry writes (not `reg add`), surface role-install
     failures, and that the read-only probes stay read-only.
 
@@ -31,7 +31,7 @@ Test-ScriptParses -Path $Dashboard               -Because "CA-Manager.ps1 parses
 . "$Mod\CAInteractive.ps1"
 
 # ---------------------------------------------------------------------------
-# 1. Get-CAOcspPlan - PURE, the CLIENTA-verbatim shape
+# 1. Get-CAOcspPlan - PURE, the CONTOSO-verbatim shape
 # ---------------------------------------------------------------------------
 $ans = [pscustomobject]@{ CA_TemplateOcspSigning = 'NSP-OCSPResponseSigning'; CA_DeltaCrl = 'No' }
 $p = Get-CAOcspPlan -CAAnswers $ans -CACommonName 'Contoso-CA' -CAMachineFqdn 'Contoso-CA.Contoso.local' `
@@ -39,11 +39,11 @@ $p = Get-CAOcspPlan -CAAnswers $ans -CACommonName 'Contoso-CA' -CAMachineFqdn 'C
 
 Assert-Equal -Actual $p.ConfigName -Expected 'Contoso-CA' -Because "the Responder\<name> key == the CA common name"
 Assert-Equal -Actual $p.CAConfig -Expected 'Contoso-CA.Contoso.local\Contoso-CA' -Because "CAConfig = <machineFQDN>\<CAName>"
-Assert-Equal -Actual $p.HashAlgorithmId -Expected 'SHA256' -Because "SHA256 (CLIENTA)"
-Assert-Equal -Actual $p.SigningFlags -Expected 861 -Because "SigningFlags 861 (CLIENTA verbatim)"
+Assert-Equal -Actual $p.HashAlgorithmId -Expected 'SHA256' -Because "SHA256 (CONTOSO)"
+Assert-Equal -Actual $p.SigningFlags -Expected 861 -Because "SigningFlags 861 (CONTOSO verbatim)"
 Assert-Equal -Actual $p.ProviderCLSID -Expected '{4956d17f-88fd-4198-b287-1e6e65883b19}' -Because "Microsoft CRL-based revocation provider CLSID"
-Assert-Equal -Actual $p.RefreshTimeOut -Expected 300000 -Because "Provider RefreshTimeOut 300000 (CLIENTA)"
-Assert-Equal -Actual $p.ReminderDuration -Expected 90 -Because "ReminderDuration 90 (CLIENTA)"
+Assert-Equal -Actual $p.RefreshTimeOut -Expected 300000 -Because "Provider RefreshTimeOut 300000 (CONTOSO)"
+Assert-Equal -Actual $p.ReminderDuration -Expected 90 -Because "ReminderDuration 90 (CONTOSO)"
 Assert-Equal -Actual $p.SigningCertificateTemplate -Expected 'NSPOCSPResponseSigning' -Because "the Menu-1 signing template CN - non-alphanumerics stripped, matching New-CAVpnTemplate and the OCSP wizard's own registry value"
 Assert-Equal -Actual $p.ResponderUrl -Expected 'http://Contoso-CA.Contoso.local/ocsp' -Because "the responder URL"
 Assert-Equal -Actual $p.LocalVerifyUrl -Expected 'http://localhost/ocsp' -Because "the local verify URL"
@@ -68,7 +68,7 @@ Assert-NotContains -Haystack $baseJoined -Needle 'C:\\' -Because "no bare filesy
 Assert-NotContains -Haystack $baseJoined -Needle 'msappproxy' -Because "no App Proxy URL unless CA_AppProxyCrlFqdn is set on the answers"
 Assert-Equal -Actual $p.DeltaCrlUrls.Count -Expected 0 -Because "no delta URL when CA_DeltaCrl is off"
 
-# App Proxy CRL URL is added as a fallback when the fqdn answer is present (matches CLIENTA's live responder)
+# App Proxy CRL URL is added as a fallback when the fqdn answer is present (matches CONTOSO's live responder)
 $pAP = Get-CAOcspPlan -CAAnswers ([pscustomobject]@{ CA_AppProxyCrlFqdn = 'crl-contoso.msappproxy.net' }) `
     -CACommonName 'Contoso-CA' -CAMachineFqdn 'Contoso-CA.Contoso.local' -CASanitizedName 'Contoso-CA' -ConfigNC 'CN=Configuration,DC=Contoso,DC=local'
 Assert-Contains -Haystack ($pAP.BaseCrlUrls -join '|') -Needle 'http://crl-contoso.msappproxy.net/CertEnroll/Contoso-CA.crl' -Because "the resolved App Proxy CRL URL is included as a backup"

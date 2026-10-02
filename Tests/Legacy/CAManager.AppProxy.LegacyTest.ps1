@@ -38,9 +38,9 @@ Test-ScriptParses -Path $Dashboard               -Because "CA-Manager.ps1 parses
 # ---------------------------------------------------------------------------
 # 1. Get-CAAppProxyFqdn  (pure composer - placeholder host only)
 # ---------------------------------------------------------------------------
-Assert-Equal -Actual (Get-CAAppProxyFqdn -Prefix 'crl' -Tenant 'clientaindustries') -Expected 'crl-clientaindustries.msappproxy.net' -Because "prefix-tenant.msappproxy.net"
-Assert-Equal -Actual (Get-CAAppProxyFqdn -Prefix 'CRL' -Tenant 'CLIENTAindustries') -Expected 'crl-clientaindustries.msappproxy.net' -Because "lowercased"
-Assert-Equal -Actual (Get-CAAppProxyFqdn -Prefix 'ocsprelay' -Tenant 'clientaindustries.onmicrosoft.com') -Expected 'ocsprelay-clientaindustries.msappproxy.net' -Because "a full .onmicrosoft.com value is trimmed to the label"
+Assert-Equal -Actual (Get-CAAppProxyFqdn -Prefix 'crl' -Tenant 'contoso') -Expected 'crl-contoso.msappproxy.net' -Because "prefix-tenant.msappproxy.net"
+Assert-Equal -Actual (Get-CAAppProxyFqdn -Prefix 'CRL' -Tenant 'contoso') -Expected 'crl-contoso.msappproxy.net' -Because "lowercased"
+Assert-Equal -Actual (Get-CAAppProxyFqdn -Prefix 'ocsprelay' -Tenant 'contoso.onmicrosoft.com') -Expected 'ocsprelay-contoso.msappproxy.net' -Because "a full .onmicrosoft.com value is trimmed to the label"
 Assert-Equal -Actual (Get-CAAppProxyFqdn -Prefix '-crl-' -Tenant '-contoso-') -Expected 'crl-contoso.msappproxy.net' -Because "leading/trailing dashes trimmed"
 
 # ---------------------------------------------------------------------------
@@ -51,18 +51,18 @@ Assert-Equal -Actual (Get-CAUrlHost 'https://a.b.c/') -Expected 'a.b.c' -Because
 Assert-Equal -Actual (Get-CAUrlHost '') -Expected '' -Because "blank in, blank out"
 
 # ---------------------------------------------------------------------------
-# 3. Get-CAAppProxyPublishingBody  (the CLIENTA onPremisesPublishing shape)
+# 3. Get-CAAppProxyPublishingBody  (the CONTOSO onPremisesPublishing shape)
 # ---------------------------------------------------------------------------
 $crlBody = (Get-CAAppProxyPublishingBody -InternalUrl 'http://ca/CertEnroll/' -ExternalUrl 'http://crl-x.msappproxy.net/CertEnroll/' -BackendCertValidation $true).onPremisesPublishing
 Assert-Equal -Actual $crlBody.externalAuthenticationType -Expected 'passthru' -Because "CRL/OCSP clients are anonymous - passthru, no pre-auth"
-Assert-True  -Condition ($crlBody.isTranslateHostHeaderEnabled -eq $true)  -Because "host-header translation on (CLIENTA)"
-Assert-True  -Condition ($crlBody.isTranslateLinksInBodyEnabled -eq $false) -Because "links-in-body translation off (CLIENTA)"
+Assert-True  -Condition ($crlBody.isTranslateHostHeaderEnabled -eq $true)  -Because "host-header translation on (CONTOSO)"
+Assert-True  -Condition ($crlBody.isTranslateLinksInBodyEnabled -eq $false) -Because "links-in-body translation off (CONTOSO)"
 Assert-True  -Condition ($crlBody.isOnPremPublishingEnabled -eq $true)      -Because "publishing enabled"
 Assert-Equal -Actual $crlBody.applicationServerTimeout -Expected 'Default' -Because "default backend timeout"
 Assert-Equal -Actual $crlBody.singleSignOnSettings.singleSignOnMode -Expected 'none' -Because "no SSO"
-Assert-True  -Condition ($crlBody.isBackendCertificateValidationEnabled -eq $true) -Because "CRL app: backend cert validation on (CLIENTA)"
+Assert-True  -Condition ($crlBody.isBackendCertificateValidationEnabled -eq $true) -Because "CRL app: backend cert validation on (CONTOSO)"
 $ocspBody = (Get-CAAppProxyPublishingBody -InternalUrl 'http://ca/ocsp/' -ExternalUrl 'http://ocsprelay-x.msappproxy.net/ocsp/' -BackendCertValidation $false).onPremisesPublishing
-Assert-True  -Condition ($ocspBody.isBackendCertificateValidationEnabled -eq $false) -Because "OCSP app: backend cert validation off (CLIENTA)"
+Assert-True  -Condition ($ocspBody.isBackendCertificateValidationEnabled -eq $false) -Because "OCSP app: backend cert validation off (CONTOSO)"
 
 # ---------------------------------------------------------------------------
 # 4. Get-CAAppProxyPlan
@@ -147,7 +147,7 @@ Assert-Match   -Actual $srcAdd -Pattern '@odata.id' -Because "the ref body is an
 
 $srcSp = (Get-Command Set-CAAppProxyServicePrincipal).Definition
 Assert-Match   -Actual $srcSp -Pattern 'appRoleAssignmentRequired' -Because "makes the app anonymous"
-Assert-Match   -Actual $srcSp -Pattern 'HideApp' -Because "hides the app from the portal like CLIENTA"
+Assert-Match   -Actual $srcSp -Pattern 'HideApp' -Because "hides the app from the portal like CONTOSO"
 Assert-Match   -Actual $srcSp -Pattern 'ResourceNotFound|404' -Because "retries the SP PATCH when the id is not visible yet (post-instantiate replication lag)"
 Assert-Match   -Actual $srcSp -Pattern 'Resolve-CAAppProxySpId' -Because "re-resolves the SP id from appId on a 404"
 $srcRes = (Get-Command Resolve-CAAppProxySpId).Definition

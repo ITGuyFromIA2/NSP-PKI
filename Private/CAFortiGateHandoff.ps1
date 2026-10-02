@@ -199,7 +199,7 @@ function Get-CAResponseObject {
         "http://$($CAAnswers.CA_AppProxyOcspFqdn)/ocsp"
     } else { $null }
 
-    # 2026-09-15, per the maintainer (live client troubleshooting - a hand-typed 'IKEv2_CorpLAN' peer had two
+    # 2026-09-15, per the maintainer (live client troubleshooting - a hand-typed 'IKEv2_InternalUsers' peer had two
     # real bugs found only via live FortiGate debug logs): for a TameMyCerts + RadiusGroupPairs client,
     # generate one config user peer per pair instead of leaving this entirely manual.
     $peerPlan = Get-CAFortiGatePeerPlan -CAAnswers $CAAnswers
@@ -274,8 +274,8 @@ function Get-CAFortiGatePeerPlan {
         a glance on the gate, same spirit as the 'CA_' prefix on CA-certificate objects; DIv2 =
         Dialup-IKEv2, the tunnel these peers gate. A pair's own Label occasionally already carries a
         'DIv2-'/'DIv2_' marker of its own (a RadiusGroupPairs labeling convention that predates this
-        feature, e.g. 'DIv2-RedStone') - stripped from the LABEL before appending it here, so the
-        result is 'P_IKEv2_DIv2_RedStone', not the redundant 'P_IKEv2_DIv2_DIv2-RedStone'.
+        feature, e.g. 'DIv2-Warehouse') - stripped from the LABEL before appending it here, so the
+        result is 'P_IKEv2_DIv2_Warehouse', not the redundant 'P_IKEv2_DIv2_DIv2-Warehouse'.
     .PARAMETER PeerGroupName
         Default 'IKEv2_DIv2_AllowedPeers' (the maintainer's own naming, 2026-09-15) - a 'config user peergrp'
         object, not an individual peer, so it deliberately does NOT get the 'P_' prefix.
@@ -854,7 +854,7 @@ function Invoke-CAMenuHandoff {
     # prompt text can safely reference (a plain scriptblock literal already closes over THIS
     # function's own local variables lazily by reference - no need for anything more than that).
     #
-    # 2026-09-15, real live bug at a client: each step below used to end in `.GetNewClosure()`.
+    # 2026-09-15, bug found in the field: each step below used to end in `.GetNewClosure()`.
     # GetNewClosure() detaches a scriptblock into its OWN private session state that only chains up
     # to GLOBAL scope (plus its captured variable snapshot) - it does NOT chain up through an
     # intermediate SCRIPT scope the way a plain scriptblock does. That's invisible when CA-Manager.ps1

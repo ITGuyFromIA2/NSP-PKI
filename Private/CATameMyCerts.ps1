@@ -16,7 +16,7 @@
         <OutboundSubject>
           <OutboundSubjectRule>
             <Field>organizationalUnitName</Field>
-            <Value>PSGI</Value>
+            <Value>SALES</Value>
             <Force>true</Force>
           </OutboundSubjectRule>
         </OutboundSubject>
@@ -72,7 +72,7 @@ function Get-CATameMyCertsPolicyXml {
         The full per-template policy XML that stamps exactly one static OU= RDN.
 
     .DESCRIPTION
-        2026-09-15, real live bug at a client: every per-group MANUAL template (ENROLLEE_SUPPLIES_SUBJECT
+        2026-09-15, bug found in the field: every per-group MANUAL template (ENROLLEE_SUPPLIES_SUBJECT
         - the CSR carries a real, tech-supplied subject) was denied with CERT_E_INVALID_NAME the
         moment a policy file existed for it, even though the file only had an <OutboundSubject>
         rewrite and no <Subject> section. TameMyCerts's own Application-log entry named the exact

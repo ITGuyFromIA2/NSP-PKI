@@ -13,7 +13,14 @@ All notable changes to NSP.PKI are documented here. Versions follow
   FortiGate, recommended), I (an issued cert) or G (generate a PFX here), shows where to make the CSR
   on the FortiGate, and picks the file with a file dialog (NSP.Console 0.1.3 `Read-NSPFilePath`) or
   a pasted path - Windows blocks drag-and-drop onto the elevated console.
-- Needs NSP.Console 0.1.3.
+- VPNCertEval only reads data: `ConvertFrom-UnitTestsFile` refuses anything but plain literals before
+  evaluating them, and `Read-EvalTargets` no longer has an `Invoke-Expression` fallback. Site-specific
+  application names that mean "reached over RDP" moved out of the script into an optional local map
+  (`VPNCertEval.LocalMap.psd1` or `NSP_VPNCERTEVAL_MAP`).
+- Client-derived names in tests and comments replaced with neutral ones; the health check's fallback
+  template is `IKEv2VPNInternalUsers` (the module's real default), not the old `IKEv2VPNCorpLAN`.
+- Needs NSP.Console 0.1.3 and NSP.Toolkit 0.1.1. The sibling loader announces Gallery installs and is
+  generated from NSP-Toolkit's canonical copy; the module loader dot-sources files in name order.
 
 ## 0.1.2
 

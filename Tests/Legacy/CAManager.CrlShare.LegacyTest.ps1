@@ -3,7 +3,7 @@
 <#
 .SYNOPSIS
     Tests for CA Manager - menu 7 (2026-09-10 renumber - was menu 6; CRL distribution share). The
-    PURE Get-CACrlSharePlan (mode gating + CLIENTA-verbatim ACL shape), and source-introspection that
+    PURE Get-CACrlSharePlan (mode gating + CONTOSO-verbatim ACL shape), and source-introspection that
     New-CACrlShare routes through Invoke-CAStep.
 
     Repo convention (Tests\README.md) - NOT Pester.
@@ -34,7 +34,7 @@ $blank = Get-CACrlSharePlan -CAAnswers ([pscustomobject]@{})
 Assert-False -Condition $blank.Applicable -Because "absent CA_CrlShareMode defaults to None"
 
 # ---------------------------------------------------------------------------
-# 2. Get-CACrlSharePlan - RootCrlPublish, CLIENTA-shaped
+# 2. Get-CACrlSharePlan - RootCrlPublish, CONTOSO-shaped
 # ---------------------------------------------------------------------------
 $ans = [pscustomobject]@{ CA_CrlShareMode = 'RootCrlPublish'; CA_CrlSharePath = 'C:\CRLShare'; CA_CrlShareWriteGroup = 'CA_MainCAServer' }
 $p = Get-CACrlSharePlan -CAAnswers $ans -CAMachineName 'CONTOSO-RADIUS'
@@ -43,9 +43,9 @@ Assert-Equal -Actual $p.ShareName -Expected 'CRLShare' -Because "share name is t
 Assert-Equal -Actual $p.LocalPath -Expected 'C:\CRLShare' -Because "local path from CA_CrlSharePath"
 Assert-Equal -Actual $p.UncPath -Expected '\\CONTOSO-RADIUS\CRLShare' -Because "UNC composed from the CA machine name + share"
 Assert-Equal -Actual $p.WriteGroup -Expected 'CA_MainCAServer' -Because "write group from CA_CrlShareWriteGroup"
-Assert-Equal -Actual $p.ShareAccess.Right -Expected 'Full' -Because "the write group gets Full at the share level (CLIENTA: the only non-default share ACE)"
+Assert-Equal -Actual $p.ShareAccess.Right -Expected 'Full' -Because "the write group gets Full at the share level (CONTOSO: the only non-default share ACE)"
 $appPkg = $p.NtfsAces | Where-Object { $_.Account -eq 'ALL APPLICATION PACKAGES' }
-Assert-True  -Condition ([bool]$appPkg) -Because "ALL APPLICATION PACKAGES gets an NTFS ACE (lets the co-located IIS/App Proxy worker read the .crl/.crt - CLIENTA)"
+Assert-True  -Condition ([bool]$appPkg) -Because "ALL APPLICATION PACKAGES gets an NTFS ACE (lets the co-located IIS/App Proxy worker read the .crl/.crt - CONTOSO)"
 Assert-Match -Actual $appPkg.Right -Pattern 'RX' -Because "and it's read+execute only"
 Assert-Equal -Actual $p.InfraGroupMember -Expected 'CONTOSO-RADIUS$' -Because "the publishing CA's machine account is the group member"
 Assert-Equal -Actual $p.InfraGroupSamName -Expected 'CA_MainCAServer' -Because "sam-name is the sanitised write-group name"

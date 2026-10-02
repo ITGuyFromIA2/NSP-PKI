@@ -48,7 +48,7 @@ Set-CADryRun -Enabled $false
 #    answer actually flows through to the Enroll grant.
 # ---------------------------------------------------------------------------
 $ansShared = [pscustomobject]@{
-    CA_TemplateAuto = 'IKEv2VPN-CorpLAN'; CA_TemplateManual = 'IKEv2VPN-CorpLAN-MANUAL'; CA_TemplateFortiGate = 'FortiGate'
+    CA_TemplateAuto = 'IKEv2VPN-InternalUsers'; CA_TemplateManual = 'IKEv2VPN-InternalUsers-MANUAL'; CA_TemplateFortiGate = 'FortiGate'
 }
 $script:__grantedTo = [System.Collections.Generic.List[string]]::new()
 function Grant-CATemplateEnrollment { param($TemplateInternalName, $PrincipalName) $script:__grantedTo.Add("$TemplateInternalName=$PrincipalName") }
@@ -65,7 +65,7 @@ Assert-Equal -Actual $script:__rhQ.Count -Expected 0 -Because "exactly 5 prompts
 # 2. TameMyCerts + RadiusGroupPairs case - the umbrella prompt is SKIPPED entirely, no Read-Host call
 # ---------------------------------------------------------------------------
 $ansTmc = [pscustomobject]@{
-    CA_TemplateAuto = 'IKEv2VPN-CorpLAN'; CA_TemplateManual = 'IKEv2VPN-CorpLAN-MANUAL'; CA_TemplateFortiGate = 'FortiGate'
+    CA_TemplateAuto = 'IKEv2VPN-InternalUsers'; CA_TemplateManual = 'IKEv2VPN-InternalUsers-MANUAL'; CA_TemplateFortiGate = 'FortiGate'
     CA_SubjectStampMode = 'TameMyCerts'
     RadiusGroupPairs = @([pscustomobject]@{ Label = 'CONTOSO'; UserGroupName = 'IKEv2_UserGroup'; UserGroupValue = 'IKEv2_InternalUsers' })
 }
@@ -84,7 +84,7 @@ Assert-False -Condition ([bool]$ansTmc.PSObject.Properties['CA_AutoEnrollGroup']
 #    rather than silently vanishing with no explanation.
 # ---------------------------------------------------------------------------
 $ansTmcWithStale = [pscustomobject]@{
-    CA_TemplateAuto = 'IKEv2VPN-CorpLAN'; CA_TemplateManual = 'IKEv2VPN-CorpLAN-MANUAL'; CA_TemplateFortiGate = 'FortiGate'
+    CA_TemplateAuto = 'IKEv2VPN-InternalUsers'; CA_TemplateManual = 'IKEv2VPN-InternalUsers-MANUAL'; CA_TemplateFortiGate = 'FortiGate'
     CA_SubjectStampMode = 'TameMyCerts'; CA_AutoEnrollGroup = 'IKEv2_MasterGroup'
     RadiusGroupPairs = @([pscustomobject]@{ Label = 'CONTOSO'; UserGroupName = 'IKEv2_UserGroup'; UserGroupValue = 'IKEv2_InternalUsers' })
 }

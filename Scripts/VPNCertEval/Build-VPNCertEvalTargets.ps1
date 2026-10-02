@@ -129,7 +129,7 @@ foreach ($p in $pairs) {
     }
 
     # RDS / file-server members for internal/corp-looking pairs
-    $looksInternal = ("$(Get-EvalProp $p 'Label') $(Get-EvalProp $p 'UserGroupName') $(Get-EvalProp $p 'UserGroupValue')" -match 'intern|corp|corplan|\brds\b|\brdp\b|fileserv|\bsmb\b|domain')
+    $looksInternal = ("$(Get-EvalProp $p 'Label') $(Get-EvalProp $p 'UserGroupName') $(Get-EvalProp $p 'UserGroupValue')" -match 'intern|corp|internalusers|\brds\b|\brdp\b|fileserv|\bsmb\b|domain')
     if ($looksInternal) {
         foreach ($m in $rdsMembers) { $eps.Add((New-Endpoint -EpHost $m -Name "RDS host ($m)" -Services @('RDP', 'Ping') -Expect 'Allow' -Source 'IKEv2_RDSMembers')) }
         foreach ($m in $fsMembers)  { $eps.Add((New-Endpoint -EpHost $m -Name "File server ($m)" -Services @('SMB', 'Kerberos', 'Ping') -Expect 'Allow' -Source 'IKEv2_FileServerMembers')) }
