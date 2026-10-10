@@ -369,8 +369,15 @@ Assert-Match -Actual (Get-Command Test-CAHandoffCertRevoked).Definition -Pattern
 
 # Functional: an older (Schema 3) hand-back with a real PFX sits in the output folder, alongside the
 # old CLI file. Only the CA-box lookups are stubbed; the wizard, reuse, response, and write are real.
+# This is the stand-alone path (<stem>_CAResponse.json, password next to the PFX): an installed
+# NSP.Toolkit would otherwise auto-load and switch it to the hand-off file and the ProgramData work
+# folder (Administrators only). Tests\PKI.Tests.ps1 covers the NSP.Toolkit path.
 $reuseDir = Join-Path $env:TEMP ("fgreuse_" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $reuseDir -Force | Out-Null
+$savedAutoLoading = $PSModuleAutoLoadingPreference
+Remove-Module NSP.Toolkit -ErrorAction SilentlyContinue
+Import-Module Microsoft.PowerShell.Management, Microsoft.PowerShell.Utility, Microsoft.PowerShell.Security
+$PSModuleAutoLoadingPreference = 'None'
 try {
     $fgKey = [System.Security.Cryptography.RSA]::Create(2048)
     $fgCert = [System.Security.Cryptography.X509Certificates.CertificateRequest]::new('CN=Contoso-FGT', $fgKey,
@@ -431,6 +438,7 @@ try {
         Remove-Item function:Write-CAHeader, function:Get-CAActiveConfigName, function:Get-CAOcspCACertBytes, function:Test-CAHandoffCertRevoked, function:Resolve-VPNCertTemplateName, function:New-CAFortiGateIdentityCert, function:Read-Host, function:Set-Clipboard -ErrorAction SilentlyContinue
     }
 } finally {
+    $PSModuleAutoLoadingPreference = $savedAutoLoading
     Remove-Item -Path $reuseDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 

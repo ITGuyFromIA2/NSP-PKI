@@ -6,6 +6,7 @@ All notable changes to NSP.PKI are documented here. Versions follow
 ## 0.1.4
 
 - Release routine: `tools\Publish-ToGallery.ps1` now runs `Publish-NSPModule` from NSP.RepoTools, the checks every NSP module shares (including a client-reference sweep of the Git history). No change to the module itself.
+- Tests: the ported hand-off test pins the stand-alone path, so an installed NSP.Toolkit no longer changes its result under Windows PowerShell 5.1.
 
 ## 0.1.3
 
