@@ -21,6 +21,7 @@ New-NSPPkiShim -ClientAnswers .\EXAMPLE.json -Path C:\Temp\PKI-Manager.ps1   # a
 | `New-NSPPkiShim` | Write a launcher (NSP.ClientScripts ToolShim recipe) carrying a client's CA answers; the launcher blanks them from itself once handed over. |
 | `ConvertTo-NSPPkiAnswers` | One ClientAnswers object -> the answers PKI Manager reads (the fields the Orchestrator's CA staging carried). |
 | `Get-NSPPkiStatus` | Read-only snapshot of the CA (the dashboard's status header). |
+| `Get-NSPPkiCAKeyReport` | Read-only report of which key a CA uses: the SHA-256 fingerprint of its public key, the key size and the configured key provider. Record the fingerprint when a CA is created and compare it after a restore, migration or renewal. It never opens a private key. |
 | `Invoke-NSPPkiInventory` | The full read-only CA inventory report (menu 14). |
 
 ## What changed from the zip-era tool

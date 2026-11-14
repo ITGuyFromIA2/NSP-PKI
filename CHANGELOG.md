@@ -3,6 +3,11 @@
 All notable changes to NSP.PKI are documented here. Versions follow
 [SemVer](https://semver.org/). `0.x` until it has real use outside NSP.
 
+## Unreleased
+
+- New: `Get-NSPPkiCAKeyReport`, a read-only report of which key a CA is using. It gives the SHA-256 fingerprint of the CA certificate's public key (the same value `openssl pkey -pubin -outform DER | openssl dgst -sha256` gives), the key algorithm and size, and the key provider the CA is configured with. Record the fingerprint when a CA is created; compare it after a restore, a migration or a renewal that was meant to keep the key. It works on the local CA, a certificate object or a certificate file, returns a `Status` instead of throwing on a machine with no CA, and never opens, exports or changes a private key.
+- Tests: `Invoke-CAInstall` and `Set-CAPublicationUrls` now have tests with every outside call replaced: nothing runs in a dry run, the steps run in order, the installer is given only the plan (never an existing key or a certificate file), and a failed step stops the ones after it. No behaviour changed.
+
 ## 0.1.4
 
 - Release routine: `tools\Publish-ToGallery.ps1` now runs `Publish-NSPModule` from NSP.RepoTools, the checks every NSP module shares (including a client-reference sweep of the Git history). No change to the module itself.

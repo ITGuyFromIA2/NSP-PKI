@@ -14,6 +14,7 @@
 
     FunctionsToExport = @(
         'ConvertTo-NSPPkiAnswers'
+        'Get-NSPPkiCAKeyReport'
         'Get-NSPPkiStatus'
         'Invoke-NSPPkiInventory'
         'New-NSPPkiShim'
